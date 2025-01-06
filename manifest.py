@@ -2,5 +2,5 @@ include('$(PORT_DIR)/boards/manifest.py')
 
 freeze('.', (
     'main.py',
-    'firmware/__init__.py',
-    'firmware/firmware.py'))
+    'magic_lights/__init__.py',
+    'magic_lights/magic_lights.py'))

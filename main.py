@@ -1,6 +1,6 @@
 from machine import WDT
 from micropython import const
-from firmware import main
+from magic_lights import main
 
 _WATCHDOG_TIMEOUT_MS = const(5000)
 

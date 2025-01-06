@@ -44,4 +44,4 @@ jobs:
         with:
           files: |
             ${{ env.UF2_FILE }}
-          body: Firmware for the Raspberry Pi Pico
+          body: Firmware for the Raspberry Pi Pico Magic Lights board

@@ -1,6 +1,6 @@
-# MC firmware
+# Magic Lights
 
-Firmware for the Raspberry Pi Pico control board.
+Firmware for the Raspberry Pi Pico Magic Lights board.
 
 ## Development
 
@@ -34,6 +34,6 @@ To remove all the files from the microcontorller use `make clean` (note that thi
 
 A new release is automatically created each time a new tag is pushed to the repository. To create a new version `x.y.z`.
 
-1. Update the `__version__` property in [version.py](blob/master/firmware/version.py) to `x.y.z`.
+1. Update the `__version__` property in [version.py](magic_lights/version.py) to `x.y.z`.
 1. Create a new commit with these changes `git commit -am vx.y.z` (note the version is prefixed with a **v**) and `git push`.
 1. Create a new tag `git tag -a vx.y.z -m vx.y.z` and `git push --tags`.

@@ -1,11 +1,11 @@
 PYTHON := python3
 ENVIRONMENT := env
 LIB := lib
-SOURCE := firmware
+SOURCE := magic_lights
 BUILD := debug
 OUTPUT := output/$(BUILD)
 PY_MAIN := main.py
-MPY_FILES := $(addprefix $(OUTPUT)/$(SOURCE)/,__init__.mpy firmware.mpy version.mpy)
+MPY_FILES := $(addprefix $(OUTPUT)/$(SOURCE)/,__init__.mpy magic_lights.mpy version.mpy)
 
 ifndef SERIAL
 SERIAL := $$(ls /dev/tty.usbmodem* | head -1)
@@ -51,7 +51,7 @@ requirements-freeze:
 	$(PYTHON) -m pip freeze > requirements.txt
 
 lint:
-	$(PYTHON) -m flake8 firmware main.py main_debug.py manifest.py
+	$(PYTHON) -m flake8 magic_lights main.py main_debug.py manifest.py
 
 $(MPY_FILES): $(OUTPUT)/$(SOURCE)/%.mpy: $(SOURCE)/%.py
 	$(MPY_CROSS)

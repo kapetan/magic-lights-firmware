@@ -1,3 +1,3 @@
-from firmware import main
+from magic_lights import main
 
 main(None)
