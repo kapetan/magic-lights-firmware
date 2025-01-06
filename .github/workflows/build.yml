@@ -1,0 +1,47 @@
+name: Build
+
+on:
+  push:
+    tags:
+      - v*
+
+env:
+  SSH_AUTH_SOCK: /tmp/ssh_agent.sock
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    env:
+      RP2_PATH: runtime/micropython/ports/rp2
+      UF2_FILE: firmware-${{ github.ref_name }}.uf2
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+
+      - name: Setup SSH key
+        run: |
+          ssh-agent -a $SSH_AUTH_SOCK
+          ssh-add - <<< "${{ secrets.SSH_PRIVATE_KEY }}"
+
+      - name: Initialize submodules
+        run: git submodule update --init runtime/micropython
+
+      - name: Install linux dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y build-essential gcc-arm-none-eabi libnewlib-arm-none-eabi
+
+      - name: Build
+        run: |
+          make -C "$RP2_PATH" submodules
+          make -C "$RP2_PATH" FROZEN_MANIFEST="$GITHUB_WORKSPACE/manifest.py"
+          cp "$RP2_PATH/build-PICO/firmware.uf2" "$UF2_FILE"
+
+      - name: Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            ${{ env.UF2_FILE }}
+          body: Firmware for the Raspberry Pi Pico

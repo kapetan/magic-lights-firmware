@@ -1,0 +1,3 @@
+[submodule "runtime/micropython"]
+	path = runtime/micropython
+	url = git@github.com:submer-crypto/micropython.git

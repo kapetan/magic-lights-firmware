@@ -1,0 +1,17 @@
+--- main.py
++++ main.py
+@@ -1650,7 +1650,13 @@
+ 
+     def sync_time(self):
+         """Sets the time on the pyboard to match the time on the host."""
+-        now = time.localtime(time.time())
++        now = time.time()
++
++        if self.sysname == 'rp2':
++            now = time.gmtime(now)
++        else:
++            now = time.localtime(now)
++
+         self.remote(set_time, (now.tm_year, now.tm_mon, now.tm_mday, now.tm_wday + 1,
+                                now.tm_hour, now.tm_min, now.tm_sec, 0))
+         return now
