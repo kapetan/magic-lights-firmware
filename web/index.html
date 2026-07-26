@@ -2,11 +2,677 @@
 <html>
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
   <title>Magic Lights</title>
+  <style>
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif;
+      background: #f5f5f5;
+      color: #1a1a1a;
+    }
+
+    main {
+      max-width: 480px;
+      margin: 0 auto;
+      padding: 12px 16px 32px;
+    }
+
+    header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 12px 16px;
+      max-width: 480px;
+      margin: 0 auto;
+    }
+
+    header h1 {
+      font-size: 1.25rem;
+      margin: 0;
+      flex: 1;
+    }
+
+    #back-link {
+      text-decoration: none;
+      color: inherit;
+      font-size: 1.25rem;
+      padding: 4px 8px;
+    }
+
+    /* Keep the layout space reserved even when hidden, so the header's
+       flex row doesn't change height (and shift everything's shared
+       vertical center) between the home page and sub-pages. */
+    #back-link[hidden] {
+      display: block;
+      visibility: hidden;
+    }
+
+    .dot {
+      display: inline-block;
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: #ddd;
+      flex-shrink: 0;
+    }
+
+    .dot-open { background: #2e7d4f; }
+    .dot-connecting { background: #b8860b; }
+
+    section[hidden] { display: none; }
+
+    .row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      background: #fff;
+      border: 1px solid #e0e0e0;
+      border-radius: 10px;
+      padding: 12px;
+      margin-bottom: 12px;
+    }
+
+    .row-link {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex: 1;
+      text-decoration: none;
+      color: inherit;
+      min-width: 0;
+    }
+
+    .row-icon { font-size: 2rem; line-height: 1; }
+
+    .row-text {
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+    }
+
+    .row-title {
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .row-desc {
+      font-size: 0.85rem;
+      color: #777;
+    }
+
+    .play-btn {
+      width: 48px;
+      height: 48px;
+      border-radius: 999px;
+      border: 2px solid #2e7d4f;
+      background: #fff;
+      color: #2e7d4f;
+      font-size: 1.1rem;
+      flex-shrink: 0;
+      margin-bottom: 0;
+    }
+
+    .row.active .play-btn { background: #1f5c39; border-color: #1f5c39; color: #fff; }
+
+    button {
+      font: inherit;
+      padding: 12px 16px;
+      border-radius: 8px;
+      border: 1px solid #ccc;
+      background: #fff;
+      width: 100%;
+      margin-bottom: 12px;
+      cursor: pointer;
+    }
+
+    button.primary {
+      background: #2e7d4f;
+      color: #fff;
+      border-color: #2e7d4f;
+    }
+
+    #pacman-direction-btn {
+      background: #e67e22;
+      border-color: #e67e22;
+      padding-top: 28px;
+      padding-bottom: 28px;
+    }
+
+    button:disabled { opacity: 0.6; cursor: default; }
+
+    a.settings-link {
+      display: block;
+      text-align: center;
+      padding: 12px 16px;
+      border-radius: 8px;
+      border: 1px solid #ccc;
+      background: #fff;
+      color: inherit;
+      text-decoration: none;
+    }
+
+    label {
+      display: block;
+      margin-bottom: 16px;
+      font-size: 0.9rem;
+    }
+
+    .label-row {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 4px;
+    }
+
+    input[type="range"] { width: 100%; }
+
+    input[type="text"], input[type="password"], select {
+      width: 100%;
+      padding: 10px;
+      border-radius: 6px;
+      border: 1px solid #ccc;
+      font: inherit;
+      margin-top: 4px;
+    }
+
+    fieldset {
+      border: 1px solid #e0e0e0;
+      border-radius: 10px;
+      margin-bottom: 16px;
+    }
+
+    #pacman-gameover {
+      background: #fdf3d8;
+      border: 1px solid #e8cf7a;
+      border-radius: 10px;
+      padding: 12px;
+      margin-bottom: 16px;
+    }
+
+    #wifi-status { color: #777; font-size: 0.9rem; }
+
+    dialog {
+      border-radius: 10px;
+      border: 1px solid #ccc;
+      max-width: 320px;
+      padding: 20px;
+    }
+
+    dialog::backdrop { background: rgba(0, 0, 0, 0.4); }
+
+    .dialog-actions {
+      display: flex;
+      gap: 8px;
+      margin-top: 16px;
+    }
+
+    .dialog-actions button { margin-bottom: 0; }
+
+    /* Declared last so these overrides win the cascade over the
+       equal-specificity light-mode rules above. */
+    @media (prefers-color-scheme: dark) {
+      body { background: #17181a; color: #eee; }
+      .row, .card { background: #24262a; border-color: #34363a; }
+      input, select, dialog { background: #24262a; color: #eee; border-color: #45484d; }
+      button, a.settings-link { background: #34363a; color: #eee; border-color: #45484d; }
+      button.primary { background: #2e7d4f; border-color: #2e7d4f; }
+      #pacman-gameover { background: #3a331a; border-color: #6b5c26; }
+    }
+  </style>
 </head>
 <body>
-  <div id="app"></div>
-  <script type="module" src="/bundle.js"></script>
+  <header>
+    <a id="back-link" href="#/" hidden>&larr;</a>
+    <h1 id="page-title">Magic Lights</h1>
+    <span id="status-dot" class="dot dot-connecting" role="status" aria-label="connecting"></span>
+  </header>
+
+  <main>
+    <section id="view-home">
+      <div class="row" data-display="rainbow">
+        <a class="row-link" href="#/rainbow">
+          <span class="row-icon">&#127752;</span>
+          <span class="row-text">
+            <span class="row-title">Rainbow</span>
+            <span class="row-desc">Animated rainbow across the strip</span>
+          </span>
+        </a>
+        <button class="play-btn" data-run="rainbow" aria-label="Run rainbow">&#9654;</button>
+      </div>
+
+      <div class="row" data-display="pacman">
+        <a class="row-link" href="#/pacman">
+          <span class="row-icon">&#128123;</span>
+          <span class="row-text">
+            <span class="row-title">Pacman</span>
+            <span class="row-desc">Chase along the strip</span>
+          </span>
+        </a>
+        <button class="play-btn" data-run="pacman" aria-label="Run pacman">&#9654;</button>
+      </div>
+
+      <div class="row" data-display="byte">
+        <a class="row-link" href="#/byte">
+          <span class="row-icon">&#9000;&#65039;</span>
+          <span class="row-text">
+            <span class="row-title">Byte</span>
+            <span class="row-desc">Encode text as bytes across the strip</span>
+          </span>
+        </a>
+        <button class="play-btn" data-run="byte" aria-label="Run byte">&#9654;</button>
+      </div>
+
+      <a class="settings-link" href="#/settings">Settings</a>
+    </section>
+
+    <section id="view-rainbow" hidden>
+      <button id="rainbow-activate-btn" class="primary">Start</button>
+
+      <label>
+        <div class="label-row"><span>Repetitions</span><output id="rainbow-repetitions-value">1</output></div>
+        <input type="range" id="rainbow-repetitions" min="1" max="10" value="1">
+      </label>
+      <label>
+        <div class="label-row"><span>Saturation</span><output id="rainbow-saturation-value">255</output></div>
+        <input type="range" id="rainbow-saturation" min="0" max="255" value="255">
+      </label>
+      <label>
+        <div class="label-row"><span>Brightness</span><output id="rainbow-brightness-value">255</output></div>
+        <input type="range" id="rainbow-brightness" min="0" max="255" value="255">
+      </label>
+      <label>
+        <div class="label-row"><span>Speed (wait ms)</span><output id="rainbow-wait_ms-value">10</output></div>
+        <input type="range" id="rainbow-wait_ms" min="1" max="100" value="10">
+      </label>
+
+      <button id="rainbow-reset-btn">Reset</button>
+    </section>
+
+    <section id="view-pacman" hidden>
+      <div id="pacman-gameover" hidden>
+        <strong>Game over</strong>
+        <p>The ghost got you. Try again!</p>
+      </div>
+
+      <button id="pacman-start-btn" class="primary">Start</button>
+      <button id="pacman-direction-btn" class="primary" hidden>Change direction</button>
+    </section>
+
+    <section id="view-byte" hidden>
+      <button id="byte-activate-btn" class="primary">Start</button>
+
+      <label>
+        Text
+        <input type="text" id="byte-text" autocomplete="off">
+      </label>
+
+      <label>
+        Alignment
+        <select id="byte-alignment">
+          <option value="start">Start</option>
+          <option value="center">Center</option>
+          <option value="end">End</option>
+        </select>
+      </label>
+    </section>
+
+    <section id="view-settings" hidden>
+      <label>
+        <div class="label-row"><span>Master brightness</span><output id="settings-brightness-value">127</output></div>
+        <input type="range" id="settings-brightness" min="0" max="255" value="127">
+      </label>
+
+      <p id="wifi-status"></p>
+
+      <form id="connect-form">
+        <fieldset>
+          <legend>Connect to network</legend>
+          <label>
+            Network name
+            <input type="text" id="connect-ssid" list="connect-ssid-networks" autocomplete="off" required>
+            <datalist id="connect-ssid-networks"></datalist>
+          </label>
+          <label>Password<input type="password" id="connect-password"></label>
+          <button type="submit" class="primary">Connect</button>
+        </fieldset>
+      </form>
+
+      <form id="ap-form">
+        <fieldset>
+          <legend>Create access point</legend>
+          <label>Network name<input type="text" id="ap-ssid" required></label>
+          <label>Password (at least 8 characters)<input type="password" id="ap-password" minlength="8" required></label>
+          <button type="submit" class="primary">Create</button>
+        </fieldset>
+      </form>
+    </section>
+  </main>
+
+  <dialog id="confirm-dialog">
+    <p id="confirm-message"></p>
+    <div class="dialog-actions">
+      <button id="confirm-cancel-btn">Cancel</button>
+      <button id="confirm-ok-btn" class="primary">Continue</button>
+    </div>
+  </dialog>
+
+  <script>
+    (function () {
+      'use strict'
+
+      var RECONNECT_MIN_MS = 500
+      var RECONNECT_MAX_MS = 8000
+      var THROTTLE_MS = 100
+      var ROUTES = ['home', 'rainbow', 'pacman', 'byte', 'settings']
+      var ROUTE_TITLES = {
+        home: 'Magic Lights',
+        rainbow: 'Rainbow',
+        pacman: 'Pacman',
+        byte: 'Byte',
+        settings: 'Settings'
+      }
+      var RAINBOW_DEFAULTS = { repetitions: 1, saturation: 255, brightness: 255, wait_ms: 10 }
+
+      var socket = null
+      var reconnectDelay = RECONNECT_MIN_MS
+      var status = 'connecting'
+      var state = null
+
+      function byId (id) {
+        return document.getElementById(id)
+      }
+
+      // -- WebSocket ----------------------------------------------------
+
+      function connect () {
+        var protocol = location.protocol === 'https:' ? 'wss' : 'ws'
+
+        socket = new WebSocket(protocol + '://' + location.host + '/api/ws')
+
+        socket.onopen = function () {
+          reconnectDelay = RECONNECT_MIN_MS
+          status = 'open'
+          render()
+        }
+
+        socket.onmessage = function (event) {
+          var data
+
+          try {
+            data = JSON.parse(event.data)
+          } catch (error) {
+            return
+          }
+
+          if (data && typeof data === 'object' && !Array.isArray(data)) {
+            state = data
+            render()
+          }
+        }
+
+        socket.onclose = function () {
+          status = 'connecting'
+          render()
+          setTimeout(connect, reconnectDelay)
+          reconnectDelay = Math.min(reconnectDelay * 2, RECONNECT_MAX_MS)
+        }
+
+        socket.onerror = function () {
+          socket.close()
+        }
+      }
+
+      function send (action) {
+        var args = Array.prototype.slice.call(arguments, 1)
+
+        if (socket && socket.readyState === WebSocket.OPEN) {
+          socket.send(JSON.stringify([action].concat(args)))
+        }
+      }
+
+      function throttle (fn, wait) {
+        var timer = null
+
+        return function () {
+          var args = arguments
+
+          if (timer) return
+
+          fn.apply(null, args)
+          timer = setTimeout(function () {
+            timer = null
+          }, wait)
+        }
+      }
+
+      // -- Router ---------------------------------------------------------
+
+      function currentRoute () {
+        var hash = location.hash.replace(/^#\/?/, '')
+        return ROUTES.indexOf(hash) === -1 ? 'home' : hash
+      }
+
+      function renderRoute () {
+        var route = currentRoute()
+
+        ROUTES.forEach(function (name) {
+          byId('view-' + name).hidden = name !== route
+        })
+
+        byId('back-link').hidden = route === 'home'
+        byId('page-title').textContent = ROUTE_TITLES[route] || 'Magic Lights'
+      }
+
+      // -- Rendering --------------------------------------------------------
+
+      function decodeBytes (buffer) {
+        try {
+          return new TextDecoder('ascii').decode(new Uint8Array(buffer))
+        } catch (error) {
+          return ''
+        }
+      }
+
+      function setSliderValue (id, value) {
+        var input = byId(id)
+
+        if (document.activeElement === input) return
+
+        input.value = value
+
+        var output = byId(id + '-value')
+        if (output) output.textContent = value
+      }
+
+      function render () {
+        var dot = byId('status-dot')
+        dot.className = 'dot dot-' + status
+        dot.setAttribute('aria-label', status)
+
+        if (!state) return
+
+        var rows = document.querySelectorAll('#view-home .row')
+        for (var i = 0; i < rows.length; i++) {
+          var row = rows[i]
+          var name = row.getAttribute('data-display')
+          var active = state.display === name
+          row.classList.toggle('active', active)
+        }
+
+        var rainbow = state.available_displays[0]
+        setSliderValue('rainbow-repetitions', rainbow.repetitions)
+        setSliderValue('rainbow-saturation', rainbow.saturation)
+        setSliderValue('rainbow-brightness', rainbow.brightness)
+        setSliderValue('rainbow-wait_ms', rainbow.wait_ms)
+
+        var rainbowActive = state.display === 'rainbow'
+        byId('rainbow-activate-btn').textContent = rainbowActive ? 'Running' : 'Start'
+        byId('rainbow-activate-btn').disabled = rainbowActive
+
+        var pacman = state.available_displays[1]
+        var pacmanRunning = state.display === 'pacman' && !pacman.ended
+        byId('pacman-start-btn').hidden = pacmanRunning
+        byId('pacman-direction-btn').hidden = !pacmanRunning
+        byId('pacman-gameover').hidden = !pacman.ended
+        byId('pacman-start-btn').textContent = pacman.ended ? 'Play again' : 'Start'
+
+        var byteDisplay = state.available_displays[2]
+        var byteActive = state.display === 'byte'
+        byId('byte-activate-btn').textContent = byteActive ? 'Running' : 'Start'
+        byId('byte-activate-btn').disabled = byteActive
+
+        var byteTextInput = byId('byte-text')
+        if (document.activeElement !== byteTextInput) {
+          byteTextInput.value = decodeBytes(byteDisplay.buffer)
+        }
+
+        var byteAlignmentSelect = byId('byte-alignment')
+        if (document.activeElement !== byteAlignmentSelect) {
+          byteAlignmentSelect.value = byteDisplay.alignment
+        }
+
+        setSliderValue('settings-brightness', state.brightness)
+
+        var wirelessNetwork = state.wireless_network || {}
+        byId('wifi-status').textContent =
+          (wirelessNetwork.interface === 'AP' ? 'Access point ' : 'Connected to ') +
+          wirelessNetwork.ssid + ' (' + wirelessNetwork.ip + ')'
+
+        var strongestBySsid = {}
+        ;(state.available_wireless_networks || []).forEach(function (net) {
+          if (!net.ssid) return
+          if (!(net.ssid in strongestBySsid) || net.rssi > strongestBySsid[net.ssid].rssi) {
+            strongestBySsid[net.ssid] = net
+          }
+        })
+
+        var datalist = byId('connect-ssid-networks')
+        datalist.innerHTML = ''
+        Object.keys(strongestBySsid).forEach(function (ssid) {
+          var option = document.createElement('option')
+          option.value = ssid
+          datalist.appendChild(option)
+        })
+      }
+
+      // -- Wiring -----------------------------------------------------------
+
+      function wireSlider (id, action) {
+        var input = byId(id)
+        var output = byId(id + '-value')
+        var sendThrottled = throttle(function (value) {
+          send(action, value)
+        }, THROTTLE_MS)
+
+        input.addEventListener('input', function () {
+          var value = Number(input.value)
+          if (output) output.textContent = value
+          sendThrottled(value)
+        })
+
+        input.addEventListener('change', function () {
+          send(action, Number(input.value))
+        })
+      }
+
+      wireSlider('rainbow-repetitions', 'displays.rainbow.repetitions')
+      wireSlider('rainbow-saturation', 'displays.rainbow.saturation')
+      wireSlider('rainbow-brightness', 'displays.rainbow.brightness')
+      wireSlider('rainbow-wait_ms', 'displays.rainbow.wait_ms')
+      wireSlider('settings-brightness', 'brightness')
+
+      var playButtons = document.querySelectorAll('.play-btn')
+      for (var p = 0; p < playButtons.length; p++) {
+        playButtons[p].addEventListener('click', function () {
+          send('run_display', this.getAttribute('data-run'))
+        })
+      }
+
+      byId('rainbow-activate-btn').addEventListener('click', function () {
+        send('run_display', 'rainbow')
+      })
+
+      byId('rainbow-reset-btn').addEventListener('click', function () {
+        Object.keys(RAINBOW_DEFAULTS).forEach(function (key) {
+          send('displays.rainbow.' + key, RAINBOW_DEFAULTS[key])
+          setSliderValue('rainbow-' + key, RAINBOW_DEFAULTS[key])
+        })
+      })
+
+      byId('pacman-start-btn').addEventListener('click', function () {
+        send('run_display', 'pacman')
+      })
+
+      byId('pacman-direction-btn').addEventListener('click', function () {
+        send('displays.pacman.change_player_direction')
+      })
+
+      byId('byte-activate-btn').addEventListener('click', function () {
+        send('run_display', 'byte')
+      })
+
+      byId('byte-text').addEventListener('input', function () {
+        var bytes = Array.from(new TextEncoder().encode(byId('byte-text').value))
+        send('displays.byte.buffer', bytes)
+      })
+
+      byId('byte-alignment').addEventListener('change', function () {
+        send('displays.byte.alignment', byId('byte-alignment').value)
+      })
+
+      var confirmDialog = byId('confirm-dialog')
+      var confirmMessage = byId('confirm-message')
+      var pendingConfirm = null
+
+      function askConfirm (message, onConfirm) {
+        confirmMessage.textContent = message
+        pendingConfirm = onConfirm
+        confirmDialog.showModal()
+      }
+
+      byId('confirm-cancel-btn').addEventListener('click', function () {
+        pendingConfirm = null
+        confirmDialog.close()
+      })
+
+      byId('confirm-ok-btn').addEventListener('click', function () {
+        var fn = pendingConfirm
+        pendingConfirm = null
+        confirmDialog.close()
+        if (fn) fn()
+      })
+
+      byId('connect-form').addEventListener('submit', function (event) {
+        event.preventDefault()
+
+        var ssid = byId('connect-ssid').value
+        var password = byId('connect-password').value
+
+        askConfirm('The device will switch networks and this page will disconnect.', function () {
+          send('connect_wireless_network_station', ssid, password)
+        })
+      })
+
+      byId('ap-form').addEventListener('submit', function (event) {
+        event.preventDefault()
+
+        var ssid = byId('ap-ssid').value
+        var password = byId('ap-password').value
+
+        askConfirm('The device will switch networks and this page will disconnect.', function () {
+          send('create_wireless_network_access_point', ssid, password)
+        })
+      })
+
+      window.addEventListener('hashchange', renderRoute)
+
+      renderRoute()
+      connect()
+    })()
+  </script>
 </body>
 </html>

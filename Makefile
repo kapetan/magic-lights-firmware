@@ -5,10 +5,9 @@ SOURCE := magic_lights
 BUILD := debug
 OUTPUT := output/$(BUILD)
 PY_MAIN := main.py
-MPY_FILES := $(addprefix $(OUTPUT)/$(SOURCE)/,__init__.mpy magic_lights.mpy pacman.mpy version.mpy)
+MPY_FILES := $(addprefix $(OUTPUT)/$(SOURCE)/,__init__.mpy magic_lights.mpy pacman.mpy atomic_file.mpy version.mpy)
 LIBRARY_MICRODOT_MPY_FILES := $(addprefix $(OUTPUT)/microdot/,__init__.mpy microdot.mpy websocket.mpy helpers.mpy)
-JS_FILES = $(OUTPUT)/web/bundle.js.gz
-HTML_FILES = $(OUTPUT)/web/index.html
+HTML_FILE = $(OUTPUT)/web/index.html.gz
 
 ifndef SERIAL
 SERIAL := $$(ls /dev/tty.usbmodem* | head -1)
@@ -33,7 +32,7 @@ define RSHELL
 	rshell -p $(SERIAL) --buffer-size 512 $(1)
 endef
 
-.PHONY: virtual virtual-activate virtual-deactivate patch requirements-install requirements-freeze lint build deploy clean repl serve
+.PHONY: virtual virtual-activate virtual-deactivate patch requirements-install requirements-freeze lint build deploy clean repl
 
 virtual: $(ENVIRONMENT)
 
@@ -57,11 +56,9 @@ requirements-freeze:
 lint:
 	$(PYTHON) -m flake8 magic_lights main.py main_debug.py manifest.py
 
-$(JS_FILES): web/*.jsx
-	npx esbuild web/index.jsx --bundle --format=esm --minify | gzip --best > $@
-
-$(HTML_FILES): web/index.html
-	cp web/index.html $@
+$(HTML_FILE): web/index.html
+	cp web/index.html $(OUTPUT)/web
+	gzip -f --best $(OUTPUT)/web/index.html
 
 $(MPY_FILES): $(OUTPUT)/$(SOURCE)/%.mpy: $(SOURCE)/%.py
 	$(MPY_CROSS)
@@ -71,14 +68,14 @@ $(OUTPUT)/main.py: $(PY_MAIN)
 
 $(eval $(call INCLUDE_LIBRARY,$(LIBRARY_MICRODOT_MPY_FILES),microdot/src/microdot))
 
-$(MPY_FILES) $(OUTPUT)/main.py $(LIBRARY_MPY_FILES) $(JS_FILES) $(HTML_FILES): | $(OUTPUT)
+$(MPY_FILES) $(OUTPUT)/main.py $(LIBRARY_MPY_FILES) $(HTML_FILE): | $(OUTPUT)
 
 $(OUTPUT):
 	mkdir -p $(OUTPUT)/$(SOURCE)
 	mkdir -p $(LIBRARY_DIRECTORIES)
 	mkdir -p $(OUTPUT)/web
 
-build: $(MPY_FILES) $(OUTPUT)/main.py $(LIBRARY_MPY_FILES) $(JS_FILES) $(HTML_FILES)
+build: $(MPY_FILES) $(OUTPUT)/main.py $(LIBRARY_MPY_FILES) $(HTML_FILE)
 
 deploy: build
 	$(call RSHELL,rsync $(OUTPUT) /pyboard)
@@ -91,9 +88,6 @@ clean:
 
 repl:
 	$(call RSHELL,repl)
-
-serve: $(HTML_FILES)
-	npx esbuild web/index.jsx --bundle --watch --sourcemap=inline --format=esm --outfile=$(JS_FILES) --servedir=$(OUTPUT)/web
 
 $(ENVIRONMENT):
 	$(PYTHON) -m venv $(ENVIRONMENT)
