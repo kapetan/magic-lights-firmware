@@ -28,7 +28,7 @@ except ImportError:
 _DOTS_RATIO = const(3)
 
 _PLAYER_SPEED = const(0.03)
-_GHOST_SPEED = const(0.035)
+_GHOST_SPEED = const(0.03)
 _GHOST_SPEED_FACTOR = const(0.4)
 
 _DIRECTION_LEFT = const(-1)
