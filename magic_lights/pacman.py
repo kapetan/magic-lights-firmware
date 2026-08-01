@@ -53,18 +53,6 @@ class Bounds:
     def __len__(self):
         return self.max - self.min + 1
 
-    # def __lt__(self, other):
-    #     return self.max < other
-
-    # def __le__(self, other):
-    #     return self.max <= other
-
-    # def __gt__(self, other):
-    #     return other < self.min
-
-    # def __ge__(self, other):
-    #     return other <= self.max
-
     def __contains__(self, other):
         return self.min <= other <= self.max
 
@@ -309,7 +297,7 @@ class TerminalRenderer:
 
                 stage[body.position - self.engine.bounds.min] = character
 
-        self.stream.write(''. join(stage) + '\n')
+        self.stream.write(''.join(stage) + '\n')
         self.stream.write('-' * len(self.engine.bounds) + '\n')
 
 if __name__ == '__main__':
