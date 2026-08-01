@@ -1,14 +1,3 @@
-# try:
-#     from micropython import const
-# except ImportError:
-#     def const(expr):
-#         return expr
-
-# _COLOR_FLAG_256 = const(0x01000000)
-
-# def nearest_colour(red, green, blue):
-#     pass
-
 def nearest_color(red, green, blue):
     candidate = None
     candidate_distance = None

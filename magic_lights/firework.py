@@ -47,6 +47,18 @@ _PARTICLE_PHASE_BURN = const(2)
 _PARTICLE_PHASE_FADE = const(3)
 _PARTICLE_PHASE_DEAD = const(4)
 
+def rasterize(position, size):
+    fractional = position % 1
+    i = math.floor(position)
+
+    yield i, 1 - fractional
+
+    for i in range(i + 1, i + size):
+        yield i, 1
+
+    if fractional > 0:
+        yield i + 1, fractional
+
 class Particle:
     def __init__(self, position, max_speed, energy=1):
         self.position = position
@@ -180,15 +192,14 @@ class TerminalRenderer:
 
             size = math.floor(particle.visibility * 5)
 
-            for i in range(size):
-                position = math.floor(particle.position) + i
-
-                if not (0 <= position < len(stage)):
+            for i, coverage in rasterize(particle.position, size):
+                if not (0 <= i < len(stage)):
                     break
 
-                red, green, blue = color
-                # stage[position] = f'\033[38;2;{red};{green};{blue}m\u25CF\033[0m'
-                stage[position] = f'\033[38;5;{nearest_color(red, green, blue)}m\u25CF\033[0m'
+                if coverage != 1:
+                    color = tuple(component * coverage for component in color)
+
+                stage[i] = f'\033[38;5;{nearest_color(*color)}m\u273D\033[0m'
 
         for particle in list(self.particle_colors.keys()):
             if particle.phase == _PARTICLE_PHASE_DEAD:
