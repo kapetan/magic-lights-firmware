@@ -33,9 +33,9 @@ def build_color_table():
         for green in range(0, 6):
             for blue in range(0, 6):
                 code = 16 + (red * 36) + (green * 6) + blue
-                r = red   * 40 + 55 if red   != 0 else 0
+                r = red * 40 + 55 if red != 0 else 0
                 g = green * 40 + 55 if green != 0 else 0
-                b = blue  * 40 + 55 if blue  != 0 else 0
+                b = blue * 40 + 55 if blue != 0 else 0
 
                 table[code] = (r, g, b)
 

@@ -12,6 +12,8 @@ from neopixel import NeoPixel
 from microdot import Microdot, send_file
 from microdot.websocket import with_websocket
 from . import pacman
+from . import firework
+from .engine_utils import Bounds
 from .atomic_file import AtomicFile
 
 _PIN_PIXELS = const(15)
@@ -178,7 +180,7 @@ def wlan_reset(wlan):
     wlan.active(False)
     wlan.active(True)
 
-DisplayTuple = namedtuple('DisplayTuple', ('rainbow', 'pacman', 'byte'))
+DisplayTuple = namedtuple('DisplayTuple', ('rainbow', 'pacman', 'byte', 'firework'))
 
 WirelessNetwork = namedtuple('WirelessNetwork', ('interface', 'ssid', 'key'))
 
@@ -260,6 +262,32 @@ class Settings:
             self.key)
 
         struct.write(name)
+
+class FireworkDisplay:
+    _COLOR_BLACK = (0, 0, 0)
+
+    def __init__(self, pixels, settings):
+        self.pixels = pixels
+        self.settings = settings
+        self.engine = None
+        self.reset()
+
+    def reset(self):
+        self.engine = firework.Engine(Bounds(0, len(self.pixels) - 1))
+
+    async def run(self):
+        renderer = firework.BaseRenderer(self.engine)
+        pixel_length = len(self.pixels)
+
+        for delta_ms in self.engine.loop():
+            for i in range(pixel_length):
+                self.pixels[i] = self._COLOR_BLACK
+
+            for i, color in renderer.render():
+                self.pixels[i] = brightness(gamma8(color), self.settings.brightness)
+
+            self.pixels.write()
+            await asyncio.sleep_ms(16)
 
 class ByteDisplay:
     _COLOR_BLACK = (0, 0, 0)
@@ -389,7 +417,7 @@ class PacmanDisplay:
         self.engine.player.change_direction()
 
     def reset(self):
-        self.engine = pacman.Engine(pacman.Bounds(0, len(self.pixels) - 1))
+        self.engine = pacman.Engine(Bounds(0, len(self.pixels) - 1))
 
     async def run(self):
         pixel_length = len(self.pixels)
@@ -536,7 +564,9 @@ class Controller:
                     dict(
                         name='byte',
                         buffer=list(self.displays.byte.buffer),
-                        alignment=format_alignment(self.displays.byte.alignment))],
+                        alignment=format_alignment(self.displays.byte.alignment)),
+                    dict(
+                        name='firework')],
                 wireless_network=dict(
                     interface=format_interface(wireless_network.interface),
                     ssid=wireless_network.ssid,
@@ -613,6 +643,8 @@ class Controller:
                                 display = self.displays.pacman
                             elif name == 'byte':
                                 display = self.displays.byte
+                            elif name == 'firework':
+                                display = self.displays.firework
 
                             if display:
                                 if self.task:
@@ -681,6 +713,8 @@ class Controller:
                         elif action == 'displays.byte.alignment':
                             value, = args
                             self.displays.byte.alignment = parse_alignment(value)
+                        elif action == 'displays.firework.ignite':
+                            self.displays.firework.ignite()
 
                         await broadcast()
             finally:
@@ -729,7 +763,8 @@ def main(wdt):
     displays = DisplayTuple(
         RainbowDisplay(pixels, settings),
         PacmanDisplay(pixels, settings),
-        ByteDisplay(pixels, settings))
+        ByteDisplay(pixels, settings),
+        FireworkDisplay(pixels, settings))
     controller = Controller(pixels, displays, settings)
 
     run_safe(controller.run())

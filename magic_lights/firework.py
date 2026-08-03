@@ -59,6 +59,7 @@ def rasterize(position, size):
     if fractional > 0:
         yield i + 1, fractional
 
+# https://www.reddit.com/r/arduino/comments/c3sd46/i_made_this_fireworks_effect_for_my_led_strips
 class Particle:
     def __init__(self, position, max_speed, energy=1):
         self.position = position
@@ -118,16 +119,23 @@ class Engine:
         self.bounds = bounds
         self.particles = []
 
+    def ignite(self, position=None, particle_count=None):
+        if position is None:
+            position = random.randint(self.bounds.min, self.bounds.max)
+
+        if particle_count is None:
+            particle_count = random.randint(_EXPLOSION_PARTICLES_LOWER_LIMIT, _EXPLOSION_PARTICLES_UPPER_LIMIT)
+
+        multiplier = random.random() * _EXPLOSION_SPEED_MULTIPLIER
+
+        for _ in range(0, particle_count):
+            particle = Particle(position, _PARTICLE_SPEED_UPPER_LIMIT * random.random() * multiplier)
+            self.particles.append(particle)
+
     def update(self, dt):
         for _ in range(0, math.ceil(len(self.bounds) / _EXPLOSION_DENSITY)):
             if random.random() < _EXPLOSION_CREATION_PROBABILITY:
-                position = random.randint(self.bounds.min, self.bounds.max)
-                particle_count = random.randint(_EXPLOSION_PARTICLES_LOWER_LIMIT, _EXPLOSION_PARTICLES_UPPER_LIMIT)
-                multiplier = random.random() * _EXPLOSION_SPEED_MULTIPLIER
-
-                for _ in range(0, particle_count):
-                    particle = Particle(position, _PARTICLE_SPEED_UPPER_LIMIT * random.random() * multiplier)
-                    self.particles.append(particle)
+                self.ignite()
 
         remove = len(self.particles) - len(self.bounds)
 
@@ -155,29 +163,16 @@ class Engine:
         for _ in self.loop():
             await sleep_ms(_UPDATE_FREQUENCY_MS)
 
-class TerminalRenderer:
-    # _PARTICLE_SIZE_1 = '\u00B7'
-    # _PARTICLE_SIZE_2 = '\u2722'
-    # _PARTICLE_SIZE_3 = '\u2733'
-    # _PARTICLE_SIZE_4 = '\u2736'
-    # _PARTICLE_SIZE_5 = '\u273B'
-    # _PARTICLE_SIZE_6 = '\u273D'
-
+class BaseRenderer:
     @staticmethod
     def random_color():
         return tuple(random.randint(0, 255) for _ in range(3))
 
-    def __init__(self, engine, stream):
+    def __init__(self, engine):
         self.engine = engine
-        self.stream = stream
         self.particle_colors = {}
 
-    def render(self, clear=True):
-        if clear:
-            self.stream.write('\033[1A\r')
-
-        stage = [' '] * len(self.engine.bounds)
-
+    def render(self):
         for particle in self.engine.particles:
             if particle in self.particle_colors:
                 color = self.particle_colors[particle]
@@ -193,30 +188,52 @@ class TerminalRenderer:
             size = math.floor(particle.visibility * 5)
 
             for i, coverage in rasterize(particle.position, size):
-                if not (0 <= i < len(stage)):
+                if not (self.engine.bounds.min <= i <= self.engine.bounds.max):
                     break
 
                 if coverage != 1:
                     color = tuple(component * coverage for component in color)
 
-                stage[i] = f'\033[38;5;{nearest_color(*color)}m\u273D\033[0m'
+                yield i, color
 
         for particle in list(self.particle_colors.keys()):
             if particle.phase == _PARTICLE_PHASE_DEAD:
                 del self.particle_colors[particle]
 
+class TerminalRenderer(BaseRenderer):
+    def __init__(self, engine, stream):
+        super().__init__(engine)
+        self.stream = stream
+
+    def render(self, clear=True):
+        if clear:
+            self.stream.write('\033[1A\r')
+
+        stage = [' '] * len(self.engine.bounds)
+
+        for i, color in super().render():
+            stage[i] = f'\033[38;5;{nearest_color(*color)}m\u273D\033[0m'
+
         self.stream.write(''.join(stage) + '\n')
 
 if __name__ == '__main__':
     import sys
-    from pacman import Bounds
+    from engine_utils import Bounds
 
     async def main():
         engine = Engine(Bounds(0, 179))
         renderer = TerminalRenderer(engine, sys.stdout)
 
         renderer.render(False)
+
+        def control():
+            while True:
+                input()
+                sys.stdout.write('\033[1A')
+                engine.ignite()
+
         asyncio.create_task(engine.run())
+        loop.run_in_executor(None, control)
 
         while True:
             renderer.render()
