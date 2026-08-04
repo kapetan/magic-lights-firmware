@@ -35,78 +35,58 @@ _GAMMA_8 = bytes((
     0xed, 0xf0, 0xf2, 0xf5, 0xf7, 0xfa, 0xfc, 0xff
 ))
 
-class Color:
-    ORDER = ('red', 'green', 'blue')
+def hsv_to_rgb(hue, saturation, value):
+    red = green = blue = 0
+    hue = (hue * 1530 + 32768) // 65536
 
-    def __init__(self, red, green, blue):
-        self.red = red
-        self.green = green
-        self.blue = blue
+    if hue < 510:
+        blue = 0
 
-    def __len__(self):
-        return len(self.ORDER)
+        if hue < 255:
+            red = 255
+            green = hue
+        else:
+            red = 510 - hue
+            green = 255
+    elif hue < 1020:
+        red = 0
 
-    def __getitem__(self, i):
-        return getattr(self, self.ORDER[i])
+        if hue < 765:
+            green = 255
+            blue = hue - 510
+        else:
+            green = 1020 - hue
+            blue = 255
+    elif hue < 1530:
+        green = 0
 
-    def __setitem__(self, i, value):
-        setattr(self, self.ORDER[i], value)
-
-    def __iter__(self):
-        yield self.red
-        yield self.green
-        yield self.blue
-
-    def gamma8(self):
-        for i, value in enumerate(self):
-            self[i] = _GAMMA_8[value]
-
-    def brightness(self, brightness):
-        brightness = (brightness + 1) & 0xff
-
-        if brightness:
-            for i, value in enumerate(self):
-                self[i] = (value * brightness) >> 8
-
-    def hsv(self, hue, saturation, value):
-        red = green = blue = 0
-        hue = (hue * 1530 + 32768) // 65536
-
-        if hue < 510:
-            blue = 0
-
-            if hue < 255:
-                red = 255
-                green = hue
-            else:
-                red = 510 - hue
-                green = 255
-        elif hue < 1020:
-            red = 0
-
-            if hue < 765:
-                green = 255
-                blue = hue - 510
-            else:
-                green = 1020 - hue
-                blue = 255
-        elif hue < 1530:
-            green = 0
-
-            if hue < 1275:
-                red = hue - 1020
-                blue = 255
-            else:
-                red = 255
-                blue = 1530 - hue
+        if hue < 1275:
+            red = hue - 1020
+            blue = 255
         else:
             red = 255
-            green = blue = 0
+            blue = 1530 - hue
+    else:
+        red = 255
+        green = blue = 0
 
-        v1 = 1 + value
-        s1 = 1 + saturation
-        s2 = 255 - saturation
+    v1 = 1 + value
+    s1 = 1 + saturation
+    s2 = 255 - saturation
 
-        self.red = (((((red * s1) >> 8) + s2) * v1) & 0xff00) >> 8
-        self.green = (((((green * s1) >> 8) + s2) * v1) & 0xff00) >> 8
-        self.blue = ((((blue * s1) >> 8) + s2) * v1) >> 8
+    red = (((((red * s1) >> 8) + s2) * v1) & 0xff00) >> 8
+    green = (((((green * s1) >> 8) + s2) * v1) & 0xff00) >> 8
+    blue = ((((blue * s1) >> 8) + s2) * v1) >> 8
+
+    return (red, green, blue)
+
+def gamma8(rgb):
+    return tuple(_GAMMA_8[component] for component in rgb)
+
+def brightness(rgb, brightness):
+    brightness = (brightness + 1) & 0xff
+
+    if brightness:
+        return tuple((component * brightness) >> 8 for component in rgb)
+
+    return rgb

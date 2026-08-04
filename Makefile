@@ -5,7 +5,16 @@ SOURCE := magic_lights
 BUILD := debug
 OUTPUT := output/$(BUILD)
 PY_MAIN := main.py
-MPY_FILES := $(addprefix $(OUTPUT)/$(SOURCE)/,__init__.mpy magic_lights.mpy pacman.mpy firework.mpy ansi_color.mpy atomic_file.mpy engine_utils.mpy version.mpy)
+MPY_FILES := $(addprefix $(OUTPUT)/$(SOURCE)/,\
+	__init__.mpy \
+	magic_lights.mpy \
+	pacman.mpy \
+	firework.mpy \
+	ansi_color.mpy \
+	atomic_file.mpy \
+	color_utils.mpy \
+	engine_utils.mpy \
+	version.mpy)
 LIBRARY_MICRODOT_MPY_FILES := $(addprefix $(OUTPUT)/microdot/,__init__.mpy microdot.mpy websocket.mpy helpers.mpy)
 HTML_FILE = $(OUTPUT)/web/index.html.gz
 
