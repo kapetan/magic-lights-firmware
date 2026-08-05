@@ -1,6 +1,8 @@
 # Magic Lights
 
-Firmware for the Raspberry Pi Pico Magic Lights board.
+Firmware for the Magic Lights board with a Raspberry Pi Pico W.
+
+![Magic Lights board](assets/board.jpeg)
 
 ## Development
 
