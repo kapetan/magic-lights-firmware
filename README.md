@@ -1,8 +1,18 @@
 # Magic Lights
 
-Firmware for the Magic Lights board with a Raspberry Pi Pico W.
+Firmware for the Magic Lights board with a Raspberry Pi Pico W. The board is meant to control a light strip of NeoPixel LEDs (or similar individually addressable color LEDs). The firmware exposes HTTP endpoints which serves a simple web UI and a JSON over WebSocket API. The API can be used to select and modify the light fixtures (e.g. a Pacman like game or a rainbow display). The firmware can either create a Wireless access point or connect to one, when it's first powered up the IP address is displayed on the light strip in binary.
+
+By default the firmware creates an access point with following details:
+
+- **SSID**: magic-lights
+- **Password**: magic-lights
+- **UI address**: http://192.168.4.1
 
 ![Magic Lights board](assets/board.jpeg)
+
+## Schematics
+
+EAGLE schematics are available at [kapetan/magic-lights-schematics](https://github.com/kapetan/magic-lights-schematics).
 
 ## Development
 
