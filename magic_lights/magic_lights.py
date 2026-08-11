@@ -5,6 +5,7 @@ import network
 import errno
 import json
 import struct
+import math
 from collections import namedtuple
 from machine import Pin
 from micropython import const
@@ -180,6 +181,9 @@ class FireworkDisplay:
         self.engine = None
         self.reset()
 
+    def ignite(self):
+        self.engine.ignite()
+
     def reset(self):
         self.engine = firework.Engine(Bounds(0, len(self.pixels) - 1))
 
@@ -192,6 +196,7 @@ class FireworkDisplay:
                 self.pixels[i] = self._COLOR_BLACK
 
             for i, color in renderer.render():
+                color = (math.floor(component) for component in color)
                 self.pixels[i] = brightness(gamma8(color), self.settings.brightness)
 
             self.pixels.write()

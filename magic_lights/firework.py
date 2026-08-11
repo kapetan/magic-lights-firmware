@@ -1,7 +1,7 @@
 import random
 import math
 import asyncio
-from ansi_color import nearest_color
+from .ansi_color import nearest_color
 
 try:
     from time import ticks_ms, ticks_diff

@@ -136,7 +136,7 @@
       border-color: #2e7d4f;
     }
 
-    #pacman-direction-btn {
+    #pacman-direction-btn, #firework-ignite-btn {
       background: #e67e22;
       border-color: #e67e22;
       padding-top: 28px;
@@ -266,6 +266,17 @@
         <button class="play-btn" data-run="byte" aria-label="Run byte">&#9654;</button>
       </div>
 
+      <div class="row" data-display="firework">
+        <a class="row-link" href="#/firework">
+          <span class="row-icon">&#128165;</span>
+          <span class="row-text">
+            <span class="row-title">Firework</span>
+            <span class="row-desc">Bursts of light across the strip</span>
+          </span>
+        </a>
+        <button class="play-btn" data-run="firework" aria-label="Run firework">&#9654;</button>
+      </div>
+
       <a class="settings-link" href="#/settings">Settings</a>
     </section>
 
@@ -300,6 +311,11 @@
 
       <button id="pacman-start-btn" class="primary">Start</button>
       <button id="pacman-direction-btn" class="primary" hidden>Change direction</button>
+    </section>
+
+    <section id="view-firework" hidden>
+      <button id="firework-start-btn" class="primary">Start</button>
+      <button id="firework-ignite-btn" class="primary" hidden>Ignite</button>
     </section>
 
     <section id="view-byte" hidden>
@@ -367,12 +383,13 @@
       var RECONNECT_MIN_MS = 500
       var RECONNECT_MAX_MS = 8000
       var THROTTLE_MS = 100
-      var ROUTES = ['home', 'rainbow', 'pacman', 'byte', 'settings']
+      var ROUTES = ['home', 'rainbow', 'pacman', 'byte', 'firework', 'settings']
       var ROUTE_TITLES = {
         home: 'Magic Lights',
         rainbow: 'Rainbow',
         pacman: 'Pacman',
         byte: 'Byte',
+        firework: 'Firework',
         settings: 'Settings'
       }
       var RAINBOW_DEFAULTS = { repetitions: 1, saturation: 255, brightness: 255, wait_ms: 10 }
@@ -397,6 +414,7 @@
           reconnectDelay = RECONNECT_MIN_MS
           status = 'open'
           render()
+          console.log('WebSocket.onopen')
         }
 
         socket.onmessage = function (event) {
@@ -412,6 +430,8 @@
             state = data
             render()
           }
+
+          console.log('WebSocket.onmessage', data)
         }
 
         socket.onclose = function () {
@@ -419,10 +439,12 @@
           render()
           setTimeout(connect, reconnectDelay)
           reconnectDelay = Math.min(reconnectDelay * 2, RECONNECT_MAX_MS)
+          console.log('WebSocket.onclose')
         }
 
         socket.onerror = function () {
           socket.close()
+          console.log('WebSocket.onerror')
         }
       }
 
@@ -535,6 +557,10 @@
           byteAlignmentSelect.value = byteDisplay.alignment
         }
 
+        var fireworkRunning = state.display === 'firework'
+        byId('firework-start-btn').hidden = fireworkRunning
+        byId('firework-ignite-btn').hidden = !fireworkRunning
+
         setSliderValue('settings-brightness', state.brightness)
 
         var wirelessNetwork = state.wireless_network || {}
@@ -613,6 +639,14 @@
 
       byId('byte-activate-btn').addEventListener('click', function () {
         send('run_display', 'byte')
+      })
+
+      byId('firework-start-btn').addEventListener('click', function () {
+        send('run_display', 'firework')
+      })
+
+      byId('firework-ignite-btn').addEventListener('click', function () {
+        send('displays.firework.ignite')
       })
 
       byId('byte-text').addEventListener('input', function () {
