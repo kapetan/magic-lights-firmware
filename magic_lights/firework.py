@@ -1,7 +1,10 @@
 import random
-import math
 import asyncio
-from .ansi_color import nearest_color
+
+try:
+    from .ansi_color import nearest_color
+except ImportError:
+    from ansi_color import nearest_color
 
 try:
     from time import ticks_ms, ticks_diff
@@ -26,15 +29,18 @@ except ImportError:
     def sleep_ms(t):
         return asyncio.sleep(t / 1000)
 
+_FRACTION_LENGTH = const(8)
+_FRACTION_MAXIMUM = const(1 << _FRACTION_LENGTH)
+
 _UPDATE_FREQUENCY_MS = const(32)
 
 _EXPLOSION_DENSITY = const(50)
-_EXPLOSION_CREATION_PROBABILITY = const(0.01)
+_EXPLOSION_CREATION_PROBABILITY = const(1)
 _EXPLOSION_PARTICLES_LOWER_LIMIT = const(10)
 _EXPLOSION_PARTICLES_UPPER_LIMIT = const(50)
-_EXPLOSION_SPEED_MULTIPLIER = const(3)
+_EXPLOSION_SPEED_MULTIPLIER = const(768)
 
-_PARTICLE_SPEED_UPPER_LIMIT = const(375)
+_PARTICLE_SPEED_UPPER_LIMIT = const(96)
 
 _PARTICLE_INITIAL_DURATION_MS = const(0)
 _PARTICLE_IGNITION_DURATION_MS = const(200)
@@ -48,22 +54,22 @@ _PARTICLE_PHASE_FADE = const(3)
 _PARTICLE_PHASE_DEAD = const(4)
 
 def rasterize(position, size):
-    fractional = position % 1
-    i = math.floor(position)
+    fractional = position & (_FRACTION_MAXIMUM - 1)
+    i = position >> _FRACTION_LENGTH
 
-    yield i, 1 - fractional
+    yield i, _FRACTION_MAXIMUM - fractional
 
     for i in range(i + 1, i + size):
-        yield i, 1
+        yield i, _FRACTION_MAXIMUM
 
     if fractional > 0:
         yield i + 1, fractional
 
 # https://www.reddit.com/r/arduino/comments/c3sd46/i_made_this_fireworks_effect_for_my_led_strips
 class Particle:
-    def __init__(self, position, max_speed, energy=1):
+    def __init__(self, position, max_speed, energy=_FRACTION_MAXIMUM):
         self.position = position
-        self.speed = random.random() * max_speed * 2 - max_speed
+        self.speed = random.randint(-max_speed, max_speed)
         self.energy = energy
         self.age_ms = 0
 
@@ -94,25 +100,25 @@ class Particle:
         phase = self.phase
 
         if phase == _PARTICLE_PHASE_INITIAL:
-            return (age / _PARTICLE_INITIAL_DURATION_MS)
+            return (_FRACTION_MAXIMUM * age // _PARTICLE_INITIAL_DURATION_MS)
         elif phase == _PARTICLE_PHASE_IGNITION:
-            return 1
+            return _FRACTION_MAXIMUM
         elif phase == _PARTICLE_PHASE_BURN:
-            return 1
+            return _FRACTION_MAXIMUM
         elif phase == _PARTICLE_PHASE_FADE:
-            return 1 - ((age
+            return _FRACTION_MAXIMUM - (_FRACTION_MAXIMUM * (age
                     - _PARTICLE_INITIAL_DURATION_MS
                     - _PARTICLE_BURN_DURATION_MS
                     - _PARTICLE_IGNITION_DURATION_MS)
-                / _PARTICLE_FADE_DURATION_MS)
+                // _PARTICLE_FADE_DURATION_MS)
         else:
             return 0
 
     def update(self, dt):
         self.age_ms += dt
-        self.position += self.speed * dt / 1000
-        self.speed -= 2 * self.speed * dt / 1000
-        self.energy *= 1.0 - random.random() * 0.1
+        self.position += self.speed * dt
+        self.speed -= (self.speed * dt) >> 9
+        self.energy = self.energy * random.randint(230, 256) >> _FRACTION_LENGTH
 
 class Engine:
     def __init__(self, bounds):
@@ -121,20 +127,21 @@ class Engine:
 
     def ignite(self, position=None, particle_count=None):
         if position is None:
-            position = random.randint(self.bounds.min, self.bounds.max)
+            position = random.randint(self.bounds.min, self.bounds.max) << _FRACTION_LENGTH
 
         if particle_count is None:
             particle_count = random.randint(_EXPLOSION_PARTICLES_LOWER_LIMIT, _EXPLOSION_PARTICLES_UPPER_LIMIT)
 
-        multiplier = random.random() * _EXPLOSION_SPEED_MULTIPLIER
+        multiplier = random.randint(0, _EXPLOSION_SPEED_MULTIPLIER)
+        speed_limit = (_PARTICLE_SPEED_UPPER_LIMIT * multiplier) >> _FRACTION_LENGTH
 
         for _ in range(0, particle_count):
-            particle = Particle(position, _PARTICLE_SPEED_UPPER_LIMIT * random.random() * multiplier)
+            particle = Particle(position, random.randint(0, speed_limit))
             self.particles.append(particle)
 
     def update(self, dt):
-        for _ in range(0, math.ceil(len(self.bounds) / _EXPLOSION_DENSITY)):
-            if random.random() < _EXPLOSION_CREATION_PROBABILITY:
+        for _ in range(0, len(self.bounds), _EXPLOSION_DENSITY):
+            if random.randint(0, 99) < _EXPLOSION_CREATION_PROBABILITY:
                 self.ignite()
 
         remove = len(self.particles) - len(self.bounds)
@@ -183,16 +190,17 @@ class BaseRenderer:
             if particle.phase == _PARTICLE_PHASE_IGNITION:
                 color = (255, 255, 255)
             else:
-                color = tuple(component * particle.energy * particle.visibility for component in color)
+                scale = (particle.energy * particle.visibility) >> _FRACTION_LENGTH
+                color = tuple((component * scale) >> _FRACTION_LENGTH for component in color)
 
-            size = math.floor(particle.visibility * 5)
+            size = (particle.visibility * 5) >> _FRACTION_LENGTH
 
             for i, coverage in rasterize(particle.position, size):
                 if not (self.engine.bounds.min <= i <= self.engine.bounds.max):
                     break
 
-                if coverage != 1:
-                    color = tuple(component * coverage for component in color)
+                if coverage != _FRACTION_MAXIMUM:
+                    color = tuple((component * coverage) >> _FRACTION_LENGTH for component in color)
 
                 yield i, color
 
