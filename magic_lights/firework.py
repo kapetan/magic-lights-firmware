@@ -94,10 +94,11 @@ class Particle:
 
         return _PARTICLE_PHASE_DEAD
 
-    @property
-    def visibility(self):
+    def visibility(self, phase=None):
         age = self.age_ms
-        phase = self.phase
+
+        if phase is None:
+            phase = self.phase
 
         if phase == _PARTICLE_PHASE_INITIAL:
             return (_FRACTION_MAXIMUM * age // _PARTICLE_INITIAL_DURATION_MS)
@@ -180,20 +181,26 @@ class BaseRenderer:
         self.particle_colors = {}
 
     def render(self):
+        next_particle_colors = {}
+
         for particle in self.engine.particles:
             if particle in self.particle_colors:
                 color = self.particle_colors[particle]
             else:
                 color = self.random_color()
-                self.particle_colors[particle] = color
 
-            if particle.phase == _PARTICLE_PHASE_IGNITION:
+            next_particle_colors[particle] = color
+
+            particle_phase = particle.phase
+            particle_visibility = particle.visibility(particle_phase)
+
+            if particle_phase == _PARTICLE_PHASE_IGNITION:
                 color = (255, 255, 255)
             else:
-                scale = (particle.energy * particle.visibility) >> _FRACTION_LENGTH
+                scale = (particle.energy * particle_visibility) >> _FRACTION_LENGTH
                 color = tuple((component * scale) >> _FRACTION_LENGTH for component in color)
 
-            size = (particle.visibility * 5) >> _FRACTION_LENGTH
+            size = (particle_visibility * 5) >> _FRACTION_LENGTH
 
             for i, coverage in rasterize(particle.position, size):
                 if not (self.engine.bounds.min <= i <= self.engine.bounds.max):
@@ -204,9 +211,7 @@ class BaseRenderer:
 
                 yield i, color
 
-        for particle in list(self.particle_colors.keys()):
-            if particle.phase == _PARTICLE_PHASE_DEAD:
-                del self.particle_colors[particle]
+        self.particle_colors = next_particle_colors
 
 class TerminalRenderer(BaseRenderer):
     def __init__(self, engine, stream):
