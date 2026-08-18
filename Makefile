@@ -14,6 +14,7 @@ MPY_FILES := $(addprefix $(OUTPUT)/$(SOURCE)/,\
 	atomic_file.mpy \
 	color_utils.mpy \
 	engine_utils.mpy \
+	fs.mpy \
 	version.mpy)
 LIBRARY_MICRODOT_MPY_FILES := $(addprefix $(OUTPUT)/microdot/,__init__.mpy microdot.mpy websocket.mpy helpers.mpy)
 HTML_FILE = $(OUTPUT)/web/index.html.gz
@@ -63,7 +64,7 @@ requirements-freeze:
 	$(PYTHON) -m pip freeze > requirements.txt
 
 lint:
-	$(PYTHON) -m flake8 magic_lights main.py main_debug.py manifest.py
+	$(PYTHON) -m flake8 magic_lights scripts main.py main_debug.py manifest.py
 
 $(HTML_FILE): web/index.html
 	cp web/index.html $(OUTPUT)/web

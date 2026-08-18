@@ -13,6 +13,7 @@ from microdot import Microdot, send_file
 from microdot.websocket import with_websocket
 from . import pacman
 from . import firework
+from . import fs
 from .engine_utils import Bounds
 from .color_utils import hsv_to_rgb, gamma8, brightness
 from .atomic_file import AtomicFile
@@ -377,7 +378,7 @@ class Controller:
         wlan = network.WLAN(network.WLAN.IF_AP)
 
         wlan.active(False)
-        wlan.config(ssid=ssid, key=key, security=3)
+        wlan.config(ssid=ssid, key=key, security=network.WLAN.SEC_WPA_WPA2)
         wlan.active(True)
 
         return wlan
@@ -516,7 +517,9 @@ class Controller:
 
         @app.route('/')
         def index(request):
-            return send_file('/web/index.html.gz', content_type='text/html; charset=utf-8', compressed=True)
+            file = fs.open('/web/index.html.gz', 'rb')
+            return send_file('/web/index.html.gz',
+                content_type='text/html; charset=utf-8', compressed=True, stream=file)
 
         @app.route('/api/state')
         def state(request):
