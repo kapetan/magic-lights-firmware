@@ -16,7 +16,7 @@ EAGLE schematics are available at [kapetan/magic-lights-schematics](https://gith
 
 ## Development
 
-At least Python version 3.8 is necessary on the host machine and the Raspberry Pi Pico must be flashed with the MicroPython firmware.
+At least Python version 3.8 is necessary on the host machine and the Raspberry Pi Pico must be flashed with MicroPython version 1.28.0 or higher.
 
 Following commands will establish the Python environment needed for uploading scripts to the microcontroller.
 

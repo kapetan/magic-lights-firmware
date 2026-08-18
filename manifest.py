@@ -8,4 +8,14 @@ freeze('.', (
     'magic_lights/firework.py',
     'magic_lights/ansi_color.py',
     'magic_lights/atomic_file.py',
-    'magic_lights/engine_utils.py'))
+    'magic_lights/color_utils.py',
+    'magic_lights/engine_utils.py',
+    'magic_lights/fs.py',
+    'magic_lights/_files.py',
+    'magic_lights/version.py'))
+
+freeze('lib/microdot', (
+    'microdot/__init__.py',
+    'microdot/microdot.py',
+    'microdot/websocket.py',
+    'microdot/helpers.py'))

@@ -1,6 +1,6 @@
 [submodule "runtime/micropython"]
 	path = runtime/micropython
-	url = git@github.com:submer-crypto/micropython.git
+	url = git@github.com:micropython/micropython.git
 [submodule "lib/microdot"]
 	path = lib/microdot
 	url = git@github.com:miguelgrinberg/microdot.git
