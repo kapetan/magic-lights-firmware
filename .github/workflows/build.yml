@@ -35,6 +35,7 @@ jobs:
 
       - name: Build
         run: |
+          make -C runtime/micropython/mpy-cross
           make -C "$RP2_PATH" submodules BOARD="$BOARD"
           make -C "$RP2_PATH" FROZEN_MANIFEST="$GITHUB_WORKSPACE/manifest.py" BOARD="$BOARD"
           cp "$RP2_PATH/build-$BOARD/firmware.uf2" "$UF2_FILE"
