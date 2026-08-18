@@ -17,7 +17,7 @@ jobs:
 
     env:
       RP2_PATH: runtime/micropython/ports/rp2
-      UF2_FILE: firmware-${{ github.ref_name }}.uf2
+      UF2_FILE: magic-lights-${{ github.ref_name }}.uf2
       BOARD: RPI_PICO_W
 
     steps:
@@ -48,4 +48,4 @@ jobs:
         with:
           files: |
             ${{ env.UF2_FILE }}
-          body: Firmware for the Raspberry Pi Pico Magic Lights board
+          body: Firmware for the Magic Lights board with a Raspberry Pi Pico W.
