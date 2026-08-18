@@ -20,9 +20,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
-
-      - name: Initialize submodules
-        run: git submodule update --init runtime/micropython
+        with:
+          submodules: 'true'
 
       - name: Install linux dependencies
         run: |
