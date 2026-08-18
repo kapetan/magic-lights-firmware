@@ -12,6 +12,9 @@ jobs:
   build:
     runs-on: ubuntu-latest
 
+    permissions:
+      contents: write
+
     env:
       RP2_PATH: runtime/micropython/ports/rp2
       UF2_FILE: firmware-${{ github.ref_name }}.uf2
