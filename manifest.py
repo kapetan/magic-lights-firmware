@@ -14,7 +14,7 @@ freeze('.', (
     'magic_lights/_files.py',
     'magic_lights/version.py'))
 
-freeze('lib/microdot', (
+freeze('lib/microdot/src', (
     'microdot/__init__.py',
     'microdot/microdot.py',
     'microdot/websocket.py',
