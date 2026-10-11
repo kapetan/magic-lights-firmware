@@ -1,7 +1,8 @@
 flake8==5.0.4
 mccabe==0.7.0
-mpy-cross==1.19.1
+mpy_cross==1.19.1
 pycodestyle==2.9.1
+pyelftools==0.32
 pyflakes==2.5.0
 pyserial==3.5
 pyudev==0.23.2

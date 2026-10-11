@@ -7,6 +7,14 @@ except ImportError:
     from ansi_color import nearest_color
 
 try:
+    from .firework_native import Engine as _NativeEngine
+except ImportError:
+    try:
+        from .firework_native import Engine as _NativeEngine
+    except ImportError:
+        _NativeEngine = None
+
+try:
     from time import ticks_ms, ticks_diff
 except ImportError:
     from time import monotonic_ns

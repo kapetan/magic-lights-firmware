@@ -668,17 +668,28 @@ def run_safe(coro):
             time.sleep_ms(500)
 
 def main(wdt):
+    from .firework_native import Engine
+
     led = Pin(_PIN_LED, Pin.OUT)
-    pixels = NeoPixel(Pin(_PIN_PIXELS), _PIXEL_COUNT)
+    # pixels = NeoPixel(Pin(_PIN_PIXELS), _PIXEL_COUNT)
 
     led.on()
 
-    settings = Settings.read(_SETTINGS_PATH)
-    displays = DisplayTuple(
-        RainbowDisplay(pixels, settings),
-        PacmanDisplay(pixels, settings),
-        ByteDisplay(pixels, settings),
-        FireworkDisplay(pixels, settings))
-    controller = Controller(pixels, displays, settings)
+    engine = Engine(Bounds(0, 240))
 
-    run_safe(controller.run())
+    print(engine)
+
+    for _ in range(0, 1000):
+        print(list(engine.particles))
+        engine.update(100)
+        time.sleep_ms(10)
+
+    # settings = Settings.read(_SETTINGS_PATH)
+    # displays = DisplayTuple(
+    #     RainbowDisplay(pixels, settings),
+    #     PacmanDisplay(pixels, settings),
+    #     ByteDisplay(pixels, settings),
+    #     FireworkDisplay(pixels, settings))
+    # controller = Controller(pixels, displays, settings)
+
+    # run_safe(controller.run())

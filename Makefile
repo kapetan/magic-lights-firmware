@@ -16,6 +16,7 @@ MPY_FILES := $(addprefix $(OUTPUT)/$(SOURCE)/,\
 	engine_utils.mpy \
 	fs.mpy \
 	version.mpy)
+NATIVE_MPY_FILES := $(addprefix $(OUTPUT)/$(SOURCE)/,firework_native.mpy)
 LIBRARY_MICRODOT_MPY_FILES := $(addprefix $(OUTPUT)/microdot/,__init__.mpy microdot.mpy websocket.mpy helpers.mpy)
 HTML_FILE = $(OUTPUT)/web/index.html.gz
 
@@ -73,19 +74,22 @@ $(HTML_FILE): web/index.html
 $(MPY_FILES): $(OUTPUT)/$(SOURCE)/%.mpy: $(SOURCE)/%.py
 	$(MPY_CROSS)
 
+$(NATIVE_MPY_FILES): $(OUTPUT)/$(SOURCE)/%.mpy: $(SOURCE)/%.c
+	$(MAKE) -f natmod.mk MOD=$(OUTPUT)/$(SOURCE)/$* SRC=$<
+
 $(OUTPUT)/main.py: $(PY_MAIN)
 	cp $(PY_MAIN) $(OUTPUT)/main.py
 
 $(eval $(call INCLUDE_LIBRARY,$(LIBRARY_MICRODOT_MPY_FILES),microdot/src/microdot))
 
-$(MPY_FILES) $(OUTPUT)/main.py $(LIBRARY_MPY_FILES) $(HTML_FILE): | $(OUTPUT)
+$(MPY_FILES) $(NATIVE_MPY_FILES) $(OUTPUT)/main.py $(LIBRARY_MPY_FILES) $(HTML_FILE): | $(OUTPUT)
 
 $(OUTPUT):
 	mkdir -p $(OUTPUT)/$(SOURCE)
 	mkdir -p $(LIBRARY_DIRECTORIES)
 	mkdir -p $(OUTPUT)/web
 
-build: $(MPY_FILES) $(OUTPUT)/main.py $(LIBRARY_MPY_FILES) $(HTML_FILE)
+build: $(MPY_FILES) $(NATIVE_MPY_FILES) $(OUTPUT)/main.py $(LIBRARY_MPY_FILES) $(HTML_FILE)
 
 deploy: build
 	$(call RSHELL,rsync $(OUTPUT) /pyboard)
