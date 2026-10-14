@@ -65,7 +65,7 @@ typedef struct _firework_particle_queue_t {
     uint32_t tail;
     uint32_t length;
     uint32_t capacity;
-    firework_particle_t **items;
+    firework_particle_t *items;
 } firework_particle_queue_t;
 
 typedef struct _firework_engine_t {
@@ -98,7 +98,7 @@ typedef struct _firework_pixel_iter_t {
     uint32_t pixel_index;
     firework_engine_bounds_t *bounds;
     firework_particle_queue_t *particles;
-    firework_pixel_t *pixels;
+    firework_pixel_t pixels[FIREWORK_PARTICLE_SIZE_UPPER_LIMIT];
 } firework_pixel_iter_t;
 
 typedef enum {
@@ -136,7 +136,7 @@ static void firework_particle_queue_init(firework_particle_queue_t *queue, uint3
     queue->tail = 0;
     queue->length = 0;
     queue->capacity = capacity;
-    queue->items = m_malloc(sizeof(firework_particle_t *) * capacity);
+    queue->items = m_malloc(sizeof(firework_particle_t) * capacity);
 }
 
 static bool firework_particle_queue_get(firework_particle_queue_t *queue, uint32_t i, firework_particle_t **particle) {
@@ -150,7 +150,7 @@ static bool firework_particle_queue_get(firework_particle_queue_t *queue, uint32
         j -= queue->capacity;
     }
 
-    *particle = queue->items[j];
+    *particle = &queue->items[j];
     return true;
 }
 
@@ -158,7 +158,7 @@ static bool firework_particle_queue_full(const firework_particle_queue_t *queue)
     return queue->length == queue->capacity;
 }
 
-static bool firework_particle_queue_push(firework_particle_queue_t *queue, firework_particle_t *particle) {
+static bool firework_particle_queue_push(firework_particle_queue_t *queue, firework_particle_t particle) {
     if (firework_particle_queue_full(queue)) {
         return false;
     }
@@ -184,7 +184,7 @@ static bool firework_particle_queue_pop(firework_particle_queue_t *queue, firewo
 
     uint32_t head = queue->head;
 
-    *particle = queue->items[head];
+    if (particle) *particle = &queue->items[head];
     head = head + 1;
 
     if (head >= queue->capacity) {
@@ -295,8 +295,8 @@ static void firework_engine_ignite(firework_engine_t *engine, int32_t position, 
 
     for (uint32_t i = 0; i < particle_count; i++) {
         int32_t max_speed = xorshift32_randint(engine->xorshift32_state, 0, speed_limit);
-        firework_particle_t *particle = m_malloc(sizeof(firework_particle_t));
-        firework_particle_init(particle,
+        firework_particle_t particle;
+        firework_particle_init(&particle,
             engine->xorshift32_state,
             position,
             max_speed,
@@ -304,10 +304,7 @@ static void firework_engine_ignite(firework_engine_t *engine, int32_t position, 
             firework_random_color(engine->xorshift32_state));
 
         if (firework_particle_queue_full(&engine->particles)) {
-            firework_particle_t *out_particle;
-            if (firework_particle_queue_pop(&engine->particles, &out_particle)) {
-                m_free(out_particle);
-            }
+            firework_particle_queue_pop(&engine->particles, NULL);
         }
 
         firework_particle_queue_push(&engine->particles, particle);
@@ -343,9 +340,7 @@ static void firework_engine_update(firework_engine_t *engine, uint32_t dt) {
         firework_particle_queue_get(&engine->particles, 0, &particle);
 
         if (firework_particle_phase(particle) == FIREWORK_PARTICLE_PHASE_DEAD) {
-            if (firework_particle_queue_pop(&engine->particles, &particle)) {
-                m_free(particle);
-            }
+            firework_particle_queue_pop(&engine->particles, NULL);
         } else {
             break;
         }
@@ -446,7 +441,6 @@ static mp_obj_t firework_render(mp_obj_t engine_in) {
         mp_obj_malloc(firework_pixel_iter_t, (const mp_obj_type_t *) &mp_type_firework_pixel_iter);
     pixels->bounds = &engine_obj->engine.bounds;
     pixels->particles = &engine_obj->engine.particles;
-    pixels->pixels = m_malloc(sizeof(firework_pixel_t) * FIREWORK_PARTICLE_SIZE_UPPER_LIMIT);
     return MP_OBJ_FROM_PTR(pixels);
 }
 
