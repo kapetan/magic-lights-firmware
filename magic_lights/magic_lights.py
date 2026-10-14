@@ -185,10 +185,10 @@ class FireworkDisplay:
         self.engine.ignite()
 
     def reset(self):
-        self.engine = firework.Engine(Bounds(0, len(self.pixels) - 1))
+        self.engine = firework.NativeEngine(Bounds(0, len(self.pixels) - 1))
 
     async def run(self):
-        renderer = firework.BaseRenderer(self.engine)
+        renderer = firework.NativeBaseRenderer(self.engine)
         pixel_length = len(self.pixels)
 
         for delta_ms in self.engine.loop():
@@ -668,28 +668,17 @@ def run_safe(coro):
             time.sleep_ms(500)
 
 def main(wdt):
-    from .firework_native import Engine
-
     led = Pin(_PIN_LED, Pin.OUT)
-    # pixels = NeoPixel(Pin(_PIN_PIXELS), _PIXEL_COUNT)
+    pixels = NeoPixel(Pin(_PIN_PIXELS), _PIXEL_COUNT)
 
     led.on()
 
-    engine = Engine(Bounds(0, 240))
+    settings = Settings.read(_SETTINGS_PATH)
+    displays = DisplayTuple(
+        RainbowDisplay(pixels, settings),
+        PacmanDisplay(pixels, settings),
+        ByteDisplay(pixels, settings),
+        FireworkDisplay(pixels, settings))
+    controller = Controller(pixels, displays, settings)
 
-    print(engine)
-
-    for _ in range(0, 1000):
-        print(list(engine.particles))
-        engine.update(100)
-        time.sleep_ms(10)
-
-    # settings = Settings.read(_SETTINGS_PATH)
-    # displays = DisplayTuple(
-    #     RainbowDisplay(pixels, settings),
-    #     PacmanDisplay(pixels, settings),
-    #     ByteDisplay(pixels, settings),
-    #     FireworkDisplay(pixels, settings))
-    # controller = Controller(pixels, displays, settings)
-
-    # run_safe(controller.run())
+    run_safe(controller.run())

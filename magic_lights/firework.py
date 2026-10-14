@@ -7,12 +7,13 @@ except ImportError:
     from ansi_color import nearest_color
 
 try:
-    from .firework_native import Engine as _NativeEngine
+    from .firework_native import Engine as _NativeEngine, render as _native_render
 except ImportError:
     try:
-        from .firework_native import Engine as _NativeEngine
+        from .firework_native import Engine as _NativeEngine, render as _native_render
     except ImportError:
         _NativeEngine = None
+        _native_render = None
 
 try:
     from time import ticks_ms, ticks_diff
@@ -220,6 +221,39 @@ class BaseRenderer:
                 yield i, color
 
         self.particle_colors = next_particle_colors
+
+if _NativeEngine and _native_render:
+    class NativeEngine:
+        def __init__(self, bounds):
+            self.native = _NativeEngine(bounds)
+
+        def ignite(self, position=None, particle_count=None):
+            self.native.ignite()
+
+        def update(self, dt):
+            self.native.update(dt)
+
+        def loop(self):
+            now_ms = past_ms = ticks_ms()
+
+            while True:
+                now_ms = ticks_ms()
+                delta_ms = ticks_diff(now_ms, past_ms)
+                past_ms = now_ms
+
+                self.update(delta_ms)
+                yield delta_ms
+
+        async def run(self):
+            for _ in self.loop():
+                await sleep_ms(_UPDATE_FREQUENCY_MS)
+
+    class NativeBaseRenderer:
+        def __init__(self, engine):
+            self.engine = engine
+
+        def render(self):
+            return _native_render(self.engine.native)
 
 class TerminalRenderer(BaseRenderer):
     def __init__(self, engine, stream):
