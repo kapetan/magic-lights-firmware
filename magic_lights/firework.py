@@ -10,7 +10,7 @@ try:
     from .firework_native import Engine as _NativeEngine, render as _native_render
 except ImportError:
     try:
-        from .firework_native import Engine as _NativeEngine, render as _native_render
+        from firework_native import Engine as _NativeEngine, render as _native_render
     except ImportError:
         _NativeEngine = None
         _native_render = None

@@ -15,7 +15,7 @@ from . import pacman
 from . import firework
 from . import fs
 from .engine_utils import Bounds
-from .color_utils import hsv_to_rgb, gamma8, brightness
+from .color_utils import hsv_to_rgb, gamma8, brightness, native_brightness_gamma8
 from .atomic_file import AtomicFile
 
 _PIN_PIXELS = const(15)
@@ -88,6 +88,39 @@ def log_message(*message):
 def wlan_reset(wlan):
     wlan.active(False)
     wlan.active(True)
+
+class Timer:
+    counter = 0
+
+    @classmethod
+    def increase(cls):
+        current = cls.counter
+        cls.counter += 1
+        return current
+
+    def __init__(self, message=None):
+        self.started = 0
+        self.message = message
+
+    def __enter__(self):
+        self.start()
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.stop(self.message)
+        return False
+
+    def start(self):
+        self.started = time.ticks_ms()
+
+    def stop(self, message=None):
+        now = time.ticks_ms()
+        delta = time.ticks_diff(now, self.started)
+
+        if not message:
+            message = f'Timer {self.increase()}'
+
+        print(message, f'{delta}ms')
 
 DisplayTuple = namedtuple('DisplayTuple', ('rainbow', 'pacman', 'byte', 'firework'))
 
@@ -189,16 +222,19 @@ class FireworkDisplay:
 
     async def run(self):
         renderer = firework.NativeBaseRenderer(self.engine)
-        pixel_length = len(self.pixels)
 
         for delta_ms in self.engine.loop():
-            for i in range(pixel_length):
-                self.pixels[i] = self._COLOR_BLACK
+            with Timer('loop (delta_ms=%dms)' % delta_ms):
+                with Timer('pixels.fill'):
+                    self.pixels.fill(self._COLOR_BLACK)
 
-            for i, color in renderer.render():
-                self.pixels[i] = brightness(gamma8(color), self.settings.brightness)
+                with Timer('render'):
+                    for i, color in renderer.render():
+                        self.pixels[i] = native_brightness_gamma8(color, self.settings.brightness)
 
-            self.pixels.write()
+                with Timer('pixels.write'):
+                    self.pixels.write()
+
             await asyncio.sleep_ms(16)
 
 class ByteDisplay:

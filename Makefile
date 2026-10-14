@@ -16,7 +16,7 @@ MPY_FILES := $(addprefix $(OUTPUT)/$(SOURCE)/,\
 	engine_utils.mpy \
 	fs.mpy \
 	version.mpy)
-NATIVE_MPY_FILES := $(addprefix $(OUTPUT)/$(SOURCE)/,firework_native.mpy)
+NATIVE_MPY_FILES := $(addprefix $(OUTPUT)/$(SOURCE)/,firework_native.mpy color_utils_native.mpy)
 LIBRARY_MICRODOT_MPY_FILES := $(addprefix $(OUTPUT)/microdot/,__init__.mpy microdot.mpy websocket.mpy helpers.mpy)
 HTML_FILE = $(OUTPUT)/web/index.html.gz
 

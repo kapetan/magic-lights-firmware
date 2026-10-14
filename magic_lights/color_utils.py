@@ -1,3 +1,8 @@
+try:
+    from .color_utils_native import brightness_gamma8 as native_brightness_gamma8
+except ImportError:
+    native_brightness_gamma8 = None
+
 # https://github.com/adafruit/Adafruit_NeoPixel/blob/master/Adafruit_NeoPixel.h
 # https://github.com/adafruit/Adafruit_NeoPixel/blob/master/Adafruit_NeoPixel.cpp
 _GAMMA_8 = bytes((
