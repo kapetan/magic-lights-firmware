@@ -1,5 +1,18 @@
 #include "py/dynruntime.h"
 
+#ifdef __INTELLISENSE__
+#define MP_QSTR_ValueError 0
+#define MP_QSTR_min 0
+#define MP_QSTR_max 0
+#define MP_QSTR_particles 0
+#define MP_QSTR_ParticleQueueIterator 0
+#define MP_QSTR_PixelIterator 0
+#define MP_QSTR_Engine 0
+#define MP_QSTR_ignite 0
+#define MP_QSTR_update 0
+#define MP_QSTR_render 0
+#endif
+
 #define FIREWORK_FRACTION_LENGTH 8
 #define FIREWORK_FRACTION_MAXIMUM (1 << FIREWORK_FRACTION_LENGTH)
 

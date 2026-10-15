@@ -1,5 +1,10 @@
 #include "py/dynruntime.h"
 
+#ifdef __INTELLISENSE__
+#define MP_QSTR_brightness_gamma8 0
+#define MP_QSTR_ValueError 0
+#endif
+
 #define COLOR_UTILS_GAMMA_8_COMPONENT(component) (COLOR_UTILS_GAMMA_8[component])
 #define COLOR_UTILS_BRIGHTNESS_COMPONENT(component, brightness) ((component * brightness) >> 8)
 

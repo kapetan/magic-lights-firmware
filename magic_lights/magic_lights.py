@@ -222,20 +222,20 @@ class FireworkDisplay:
 
     async def run(self):
         renderer = firework.NativeBaseRenderer(self.engine)
+        now_ms = past_ms = time.ticks_ms()
 
-        for delta_ms in self.engine.loop():
-            with Timer('loop (delta_ms=%dms)' % delta_ms):
-                with Timer('pixels.fill'):
-                    self.pixels.fill(self._COLOR_BLACK)
+        for _ in self.engine.loop():
+            self.pixels.fill(self._COLOR_BLACK)
 
-                with Timer('render'):
-                    for i, color in renderer.render():
-                        self.pixels[i] = native_brightness_gamma8(color, self.settings.brightness)
+            for i, color in renderer.render():
+                self.pixels[i] = native_brightness_gamma8(color, self.settings.brightness)
 
-                with Timer('pixels.write'):
-                    self.pixels.write()
+            self.pixels.write()
 
-            await asyncio.sleep_ms(16)
+            now_ms = time.ticks_ms()
+            delta_ms = time.ticks_diff(now_ms, past_ms)
+            await asyncio.sleep_ms(max(16 - delta_ms, 1))
+            past_ms = time.ticks_ms()
 
 class ByteDisplay:
     _COLOR_BLACK = (0, 0, 0)
