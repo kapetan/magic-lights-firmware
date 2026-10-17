@@ -7,13 +7,14 @@ except ImportError:
     from ansi_color import nearest_color
 
 try:
-    from .firework_native import Engine as _NativeEngine, render as _native_render
+    from .firework_native import (
+        Engine as _NativeEngine,
+        render as _native_render,
+        render_into as _native_render_into)
 except ImportError:
-    try:
-        from firework_native import Engine as _NativeEngine, render as _native_render
-    except ImportError:
-        _NativeEngine = None
-        _native_render = None
+    _NativeEngine = None
+    _native_render = None
+    _native_render_into = None
 
 try:
     from time import ticks_ms, ticks_diff
@@ -222,7 +223,7 @@ class BaseRenderer:
 
         self.particle_colors = next_particle_colors
 
-if _NativeEngine and _native_render:
+if _NativeEngine and _native_render and _native_render_into:
     class NativeEngine:
         def __init__(self, bounds):
             self.native = _NativeEngine(bounds)
@@ -254,6 +255,9 @@ if _NativeEngine and _native_render:
 
         def render(self):
             return _native_render(self.engine.native)
+
+        def render_into(self, pixels):
+            return _native_render_into(self.engine.native, pixels.buf, pixels.bpp, bytes(pixels.ORDER))
 
 class TerminalRenderer(BaseRenderer):
     def __init__(self, engine, stream):

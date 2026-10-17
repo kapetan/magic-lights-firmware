@@ -2,6 +2,7 @@
 
 #ifdef __INTELLISENSE__
 #define MP_QSTR_brightness_gamma8 0
+#define MP_QSTR_brightness_gamma8_component 0
 #define MP_QSTR_ValueError 0
 #endif
 
@@ -70,10 +71,20 @@ static mp_obj_t color_utils_brightness_gamma8(mp_obj_t color_in, mp_obj_t bright
 
 static MP_DEFINE_CONST_FUN_OBJ_2(color_utils_brightness_gamma8_obj, color_utils_brightness_gamma8);
 
+static mp_obj_t color_utils_brightness_gamma8_component(mp_obj_t component_in, mp_obj_t brightness_in) {
+    uint8_t component = mp_obj_get_int(component_in);
+    uint8_t brightness = mp_obj_get_int(brightness_in);
+    component = COLOR_UTILS_BRIGHTNESS_COMPONENT(COLOR_UTILS_GAMMA_8_COMPONENT(component), brightness);
+    return mp_obj_new_int(component);
+}
+
+static MP_DEFINE_CONST_FUN_OBJ_2(color_utils_brightness_gamma8_component_obj, color_utils_brightness_gamma8_component);
+
 mp_obj_t mpy_init(mp_obj_fun_bc_t *self, size_t n_args, size_t n_kw, mp_obj_t *args) {
     MP_DYNRUNTIME_INIT_ENTRY
 
     mp_store_global(MP_QSTR_brightness_gamma8, MP_OBJ_FROM_PTR(&color_utils_brightness_gamma8_obj));
+    mp_store_global(MP_QSTR_brightness_gamma8_component, MP_OBJ_FROM_PTR(&color_utils_brightness_gamma8_component_obj));
 
     MP_DYNRUNTIME_INIT_EXIT
 }

@@ -11,6 +11,7 @@
 #define MP_QSTR_ignite 0
 #define MP_QSTR_update 0
 #define MP_QSTR_render 0
+#define MP_QSTR_render_into 0
 #endif
 
 #define FIREWORK_FRACTION_LENGTH 8
@@ -22,7 +23,7 @@
 #define FIREWORK_EXPLOSION_PARTICLES_UPPER_LIMIT 50
 #define FIREWORK_EXPLOSION_SPEED_MULTIPLIER 768
 
-#define FIREWORK_PARTICLE_SPEED_UPPER_LIMIT 96
+#define FIREWORK_PARTICLE_SPEED_UPPER_LIMIT 48
 #define FIREWORK_PARTICLE_SIZE_UPPER_LIMIT 6
 
 #define FIREWORK_PARTICLE_IGNITION_DURATION_MS 200
@@ -53,10 +54,13 @@ mp_getiter_iternext_custom_t firework_pixel_iter_getiter_iternext;
 
 typedef uint32_t xorshift32_state_t;
 
-typedef struct _firework_color_t {
-    uint8_t red;
-    uint8_t green;
-    uint8_t blue;
+typedef union _firework_color_t {
+    struct {
+        uint8_t red;
+        uint8_t green;
+        uint8_t blue;
+    };
+    uint8_t components[3];
 } firework_color_t;
 
 typedef struct _firework_particle_t {
@@ -120,6 +124,11 @@ typedef enum {
     FIREWORK_PARTICLE_PHASE_FADE,
     FIREWORK_PARTICLE_PHASE_DEAD
 } firework_particle_phase_t;
+
+static inline int32_t firework_signed_shift(int32_t n, uint8_t shift) {
+    int32_t s = (n > 0) - (n < 0);
+    return s * ((s * n) >> shift);
+}
 
 static uint32_t xorshift32(xorshift32_state_t *state) {
     uint32_t x = *state;
@@ -197,7 +206,10 @@ static bool firework_particle_queue_pop(firework_particle_queue_t *queue, firewo
 
     uint32_t head = queue->head;
 
-    if (particle) *particle = &queue->items[head];
+    if (particle) {
+        *particle = &queue->items[head];
+    }
+
     head = head + 1;
 
     if (head >= queue->capacity) {
@@ -284,10 +296,10 @@ static int32_t firework_particle_visibility(const firework_particle_t *particle,
 
 static void firework_particle_update(firework_particle_t *particle, uint32_t dt) {
     particle->age_ms += dt;
-    particle->position += particle->speed * dt;
-    particle->speed -= (particle->speed * dt) >> 9;
-    particle->energy =
-        (particle->energy * xorshift32_randint(particle->xorshift32_state, 230, 256)) >> FIREWORK_FRACTION_LENGTH;
+    particle->position += particle->speed * (int32_t) dt;
+    particle->speed -= firework_signed_shift(particle->speed * (int32_t) dt, 7);
+    particle->energy -=
+        (particle->energy * xorshift32_randint(particle->xorshift32_state, 0, 512) * (int32_t) dt) >> 17;
 }
 
 static uint32_t firework_engine_bounds_length(const firework_engine_bounds_t *bounds) {
@@ -305,16 +317,13 @@ static void firework_engine_ignite(firework_engine_t *engine, int32_t position, 
     uint32_t multiplier =
         (uint32_t) xorshift32_randint(engine->xorshift32_state, 0, FIREWORK_EXPLOSION_SPEED_MULTIPLIER);
     uint32_t speed_limit = (FIREWORK_PARTICLE_SPEED_UPPER_LIMIT * multiplier) >> FIREWORK_FRACTION_LENGTH;
+    firework_color_t color = firework_random_color(engine->xorshift32_state);
 
     for (uint32_t i = 0; i < particle_count; i++) {
         int32_t max_speed = xorshift32_randint(engine->xorshift32_state, 0, speed_limit);
         firework_particle_t particle;
-        firework_particle_init(&particle,
-            engine->xorshift32_state,
-            position,
-            max_speed,
-            FIREWORK_FRACTION_MAXIMUM,
-            firework_random_color(engine->xorshift32_state));
+        firework_particle_init(
+            &particle, engine->xorshift32_state, position, max_speed, FIREWORK_FRACTION_MAXIMUM, color);
 
         if (firework_particle_queue_full(&engine->particles)) {
             firework_particle_queue_pop(&engine->particles, NULL);
@@ -379,7 +388,7 @@ static void firework_render_particle(const firework_particle_t *particle,
     uint32_t particle_size =
         (particle_visibility * (FIREWORK_PARTICLE_SIZE_UPPER_LIMIT - 1)) >> FIREWORK_FRACTION_LENGTH;
     int32_t fractional = particle_position & (FIREWORK_FRACTION_MAXIMUM - 1);
-    int32_t start_position = particle_position >> FIREWORK_FRACTION_LENGTH;
+    int32_t start_position = (particle_position >> FIREWORK_FRACTION_LENGTH) - (particle_size >> 1);
 
     *size = 0;
 
@@ -458,6 +467,72 @@ static mp_obj_t firework_render(mp_obj_t engine_in) {
 }
 
 static MP_DEFINE_CONST_FUN_OBJ_1(firework_render_obj, firework_render);
+
+static mp_obj_t firework_render_into(size_t n_args, const mp_obj_t *args) {
+    mp_obj_t engine_in = args[0];
+    mp_obj_t buffer_in = args[1];
+    mp_obj_t bpp_in = args[2];
+    mp_obj_t order_in = args[3];
+
+    firework_engine_obj_t *engine_obj = MP_OBJ_TO_PTR(engine_in);
+
+    mp_buffer_info_t buffer_info;
+    mp_get_buffer_raise(buffer_in, &buffer_info, MP_BUFFER_WRITE);
+
+    uint8_t *pixel_buffer = (uint8_t *) buffer_info.buf;
+    size_t pixel_length = buffer_info.len;
+
+    for (uint32_t i = 0; i < pixel_length; i++) {
+        pixel_buffer[i] = 0;
+    }
+
+    int32_t bpp = mp_obj_get_int(bpp_in);
+
+    mp_get_buffer_raise(order_in, &buffer_info, MP_BUFFER_READ);
+
+    uint8_t *order_buffer = (uint8_t *) buffer_info.buf;
+    size_t order_length = buffer_info.len;
+
+    firework_particle_queue_t *particles = &engine_obj->engine.particles;
+    firework_particle_t *particle;
+    firework_pixel_t pixels[FIREWORK_PARTICLE_SIZE_UPPER_LIMIT];
+    uint32_t particle_size;
+
+    for (uint32_t i = 0; i < particles->length; i++) {
+        if (!firework_particle_queue_get(particles, i, &particle)) {
+            break;
+        }
+
+        firework_render_particle(particle, &engine_obj->engine.bounds, pixels, &particle_size);
+
+        if (particle_size == 0) {
+            continue;
+        }
+
+        for (uint32_t j = 0; j < particle_size; j++) {
+            firework_pixel_t pixel = pixels[j];
+            int32_t offset = pixel.position * bpp;
+
+            for (uint32_t k = 0; k < MIN(bpp, 3); k++) {
+                int32_t component_offset = offset + (k < order_length ? order_buffer[k] : k);
+
+                if (component_offset < pixel_length) {
+                    int32_t component = pixel_buffer[component_offset] + pixel.color.components[k];
+
+                    if (component > 255) {
+                        component = 255;
+                    }
+
+                    pixel_buffer[component_offset] = component;
+                }
+            }
+        }
+    }
+
+    return mp_const_none;
+}
+
+static MP_DEFINE_CONST_FUN_OBJ_VAR_BETWEEN(firework_render_into_obj, 4, 4, firework_render_into);
 
 static mp_obj_t firework_engine_obj_make_new(
     const mp_obj_type_t *type, size_t n_args, size_t n_kw, const mp_obj_t *args_in) {
@@ -563,6 +638,7 @@ mp_obj_t mpy_init(mp_obj_fun_bc_t *self, size_t n_args, size_t n_kw, mp_obj_t *a
 
     mp_store_global(MP_QSTR_Engine, MP_OBJ_FROM_PTR(&mp_type_firework_engine));
     mp_store_global(MP_QSTR_render, MP_OBJ_FROM_PTR(&firework_render_obj));
+    mp_store_global(MP_QSTR_render_into, MP_OBJ_FROM_PTR(&firework_render_into_obj));
 
     MP_DYNRUNTIME_INIT_EXIT
 }

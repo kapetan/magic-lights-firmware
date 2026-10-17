@@ -1,7 +1,10 @@
 try:
-    from .color_utils_native import brightness_gamma8 as native_brightness_gamma8
+    from .color_utils_native import (
+        brightness_gamma8 as native_brightness_gamma8,
+        brightness_gamma8_component as native_brightness_gamma8_component)
 except ImportError:
     native_brightness_gamma8 = None
+    native_brightness_gamma8_component = None
 
 # https://github.com/adafruit/Adafruit_NeoPixel/blob/master/Adafruit_NeoPixel.h
 # https://github.com/adafruit/Adafruit_NeoPixel/blob/master/Adafruit_NeoPixel.cpp
