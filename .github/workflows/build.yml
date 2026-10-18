@@ -36,6 +36,12 @@ jobs:
           gzip --best web/index.html
           python scripts/embed_files.py web/index.html.gz > magic_lights/_files.py
 
+      - name: Compile native modules
+        run: |
+          for filename in magic_lights/*.c; do
+            make -f natmod.mk MOD="${filename%.*}" SRC="$filename"
+          done
+
       - name: Build
         run: |
           make -C runtime/micropython/mpy-cross

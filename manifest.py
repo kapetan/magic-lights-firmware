@@ -12,7 +12,9 @@ freeze('.', (
     'magic_lights/engine_utils.py',
     'magic_lights/fs.py',
     'magic_lights/_files.py',
-    'magic_lights/version.py'))
+    'magic_lights/version.py',
+    'magic_lights/color_utils_native.mpy',
+    'magic_lights/firework_native.mpy'))
 
 freeze('lib/microdot/src', (
     'microdot/__init__.py',
