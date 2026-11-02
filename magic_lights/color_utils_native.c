@@ -3,11 +3,15 @@
 #ifdef __INTELLISENSE__
 #define MP_QSTR_brightness_gamma8 0
 #define MP_QSTR_brightness_gamma8_component 0
+#define MP_QSTR_hsv_to_rgb 0
 #define MP_QSTR_ValueError 0
 #endif
 
 #define COLOR_UTILS_GAMMA_8_COMPONENT(component) (COLOR_UTILS_GAMMA_8[component])
 #define COLOR_UTILS_BRIGHTNESS_COMPONENT(component, brightness) ((component * brightness) >> 8)
+
+#define COLOR_UTILS_TUPLE(r, g, b) \
+    (mp_obj_new_tuple(3, ((mp_obj_t[]) {mp_obj_new_int(r), mp_obj_new_int(g), mp_obj_new_int(b)})))
 
 // https://github.com/adafruit/Adafruit_NeoPixel/blob/master/Adafruit_NeoPixel.h
 // https://github.com/adafruit/Adafruit_NeoPixel/blob/master/Adafruit_NeoPixel.cpp
@@ -68,7 +72,7 @@ static mp_obj_t color_utils_brightness_gamma8(mp_obj_t color_in, mp_obj_t bright
     green = COLOR_UTILS_BRIGHTNESS_COMPONENT(COLOR_UTILS_GAMMA_8_COMPONENT(green), brightness);
     blue = COLOR_UTILS_BRIGHTNESS_COMPONENT(COLOR_UTILS_GAMMA_8_COMPONENT(blue), brightness);
 
-    return mp_obj_new_tuple(3, ((mp_obj_t[]) {mp_obj_new_int(red), mp_obj_new_int(green), mp_obj_new_int(blue)}));
+    return COLOR_UTILS_TUPLE(red, green, blue);
 }
 
 static MP_DEFINE_CONST_FUN_OBJ_2(color_utils_brightness_gamma8_obj, color_utils_brightness_gamma8);
@@ -82,11 +86,72 @@ static mp_obj_t color_utils_brightness_gamma8_component(mp_obj_t component_in, m
 
 static MP_DEFINE_CONST_FUN_OBJ_2(color_utils_brightness_gamma8_component_obj, color_utils_brightness_gamma8_component);
 
+static mp_obj_t color_utils_hsv_to_rgb(mp_obj_t hue_in, mp_obj_t saturation_in, mp_obj_t value_in) {
+    uint32_t hue = mp_obj_get_int(hue_in);
+    uint32_t saturation = mp_obj_get_int(saturation_in);
+    uint32_t value = mp_obj_get_int(value_in);
+
+    uint8_t red = 0;
+    uint8_t green = 0;
+    uint8_t blue = 0;
+
+    hue = (hue * 1530 + 32768) >> 16;
+
+    if (hue < 510) {
+        blue = 0;
+
+        if (hue < 255) {
+            red = 255;
+            green = (uint8_t) hue;
+        } else {
+            red = (uint8_t) (510 - hue);
+            green = 255;
+        }
+    } else if (hue < 1020) {
+        red = 0;
+
+        if (hue < 765) {
+            green = 255;
+            blue = (uint8_t) (hue - 510);
+        } else {
+            green = (uint8_t) (1020 - hue);
+            blue = 255;
+        }
+    } else if (hue < 1530) {
+        green = 0;
+
+        if (hue < 1275) {
+            red = (uint8_t) (hue - 1020);
+            blue = 255;
+        } else {
+            red = 255;
+            blue = (uint8_t) (1530 - hue);
+        }
+    } else {
+        red = 255;
+        green = 0;
+        blue = 0;
+    }
+
+    uint32_t v1 = 1 + value;
+    uint32_t s1 = 1 + saturation;
+    uint32_t s2 = 255 - saturation;
+
+    red = (((((red * s1) >> 8) + s2) * v1) & 0xff00) >> 8;
+    green = (((((green * s1) >> 8) + s2) * v1) & 0xff00) >> 8;
+    blue = ((((blue * s1) >> 8) + s2) * v1) >> 8;
+
+    return COLOR_UTILS_TUPLE(red, green, blue);
+}
+
+MP_DEFINE_CONST_FUN_OBJ_3(color_utils_hsv_to_rgb_obj, color_utils_hsv_to_rgb);
+
 mp_obj_t mpy_init(mp_obj_fun_bc_t *self, size_t n_args, size_t n_kw, mp_obj_t *args) {
     MP_DYNRUNTIME_INIT_ENTRY
 
     mp_store_global(MP_QSTR_brightness_gamma8, MP_OBJ_FROM_PTR(&color_utils_brightness_gamma8_obj));
     mp_store_global(MP_QSTR_brightness_gamma8_component, MP_OBJ_FROM_PTR(&color_utils_brightness_gamma8_component_obj));
+    mp_store_global(MP_QSTR_hsv_to_rgb, MP_OBJ_FROM_PTR(&color_utils_hsv_to_rgb_obj));
 
     MP_DYNRUNTIME_INIT_EXIT
 }

@@ -16,7 +16,7 @@ from . import firework
 from . import fs
 from .engine_utils import Bounds
 from .color_utils import (
-    hsv_to_rgb,
+    native_hsv_to_rgb,
     brightness,
     native_brightness_gamma8,
     native_brightness_gamma8_component)
@@ -322,7 +322,7 @@ class RainbowDisplay:
 
                 for i in range(pixel_length):
                     hue = (first_hue + (i * self.repetitions * 65536) // pixel_length) & 0xffff
-                    color = hsv_to_rgb(hue, self.saturation, self.brightness)
+                    color = native_hsv_to_rgb(hue, self.saturation, self.brightness)
                     color = native_brightness_gamma8(color, self.settings.brightness)
                     self.pixels[i] = color
 
