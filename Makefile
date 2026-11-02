@@ -97,7 +97,7 @@ deploy: build
 	@echo
 
 clean:
-	rm -rf output
+	rm -rf output build
 	$(call RSHELL,rm -rf /pyboard/*)
 
 repl:

@@ -9,6 +9,8 @@
 #define COLOR_UTILS_GAMMA_8_COMPONENT(component) (COLOR_UTILS_GAMMA_8[component])
 #define COLOR_UTILS_BRIGHTNESS_COMPONENT(component, brightness) ((component * brightness) >> 8)
 
+// https://github.com/adafruit/Adafruit_NeoPixel/blob/master/Adafruit_NeoPixel.h
+// https://github.com/adafruit/Adafruit_NeoPixel/blob/master/Adafruit_NeoPixel.cpp
 // clang-format off
 static const uint8_t COLOR_UTILS_GAMMA_8[] = {
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,

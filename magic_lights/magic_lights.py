@@ -17,8 +17,8 @@ from . import fs
 from .engine_utils import Bounds
 from .color_utils import (
     hsv_to_rgb,
-    gamma8,
     brightness,
+    native_brightness_gamma8,
     native_brightness_gamma8_component)
 from .atomic_file import AtomicFile
 
@@ -210,8 +210,6 @@ class Settings:
         struct.write(name)
 
 class FireworkDisplay:
-    _COLOR_BLACK = (0, 0, 0)
-
     def __init__(self, pixels, settings):
         self.pixels = pixels
         self.settings = settings
@@ -298,7 +296,7 @@ class ByteDisplay:
                     else:
                         color = self._COLOR_BLACK
 
-                    self.pixels[i] = brightness(gamma8(color), _brightness)
+                    self.pixels[i] = native_brightness_gamma8(color, _brightness)
 
                 self.pixels.write()
 
@@ -325,8 +323,7 @@ class RainbowDisplay:
                 for i in range(pixel_length):
                     hue = (first_hue + (i * self.repetitions * 65536) // pixel_length) & 0xffff
                     color = hsv_to_rgb(hue, self.saturation, self.brightness)
-                    color = gamma8(color)
-                    color = brightness(color, self.settings.brightness)
+                    color = native_brightness_gamma8(color, self.settings.brightness)
                     self.pixels[i] = color
 
                 self.pixels.write()
@@ -400,7 +397,7 @@ class PacmanDisplay:
                     else:
                         color = self._COLOR_GHOST
 
-                self.pixels[body.position] = brightness(gamma8(color), self.settings.brightness)
+                self.pixels[body.position] = native_brightness_gamma8(color, self.settings.brightness)
 
             self.pixels.write()
             await asyncio.sleep_ms(16)
