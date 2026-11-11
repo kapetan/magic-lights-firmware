@@ -170,7 +170,69 @@
 
     input[type="range"] { width: 100%; }
 
-    input[type="text"], input[type="password"], select {
+    .day-timeline-wrap {
+      position: relative;
+      margin: 20px 0 16px;
+    }
+
+    .day-timeline {
+      position: relative;
+      height: 16px;
+      border-radius: 2px;
+      background: #dee2e6;
+      overflow: hidden;
+    }
+
+    .day-timeline-active {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      background: #228be6;
+    }
+
+    .day-timeline-now {
+      position: absolute;
+      top: 50%;
+      width: 10px;
+      height: 10px;
+      margin-top: -5px;
+      margin-left: -5px;
+      border-radius: 50%;
+      background: #fff;
+    }
+
+    .day-timeline-label {
+      position: absolute;
+      font-size: 12px;
+      line-height: 1;
+      color: #666;
+      white-space: nowrap;
+    }
+
+    .day-timeline-label-start {
+      bottom: 100%;
+      margin-bottom: 4px;
+      text-align: left;
+    }
+
+    .day-timeline-label-end {
+      top: 100%;
+      margin-top: 4px;
+      text-align: right;
+    }
+
+    .day-timeline-divider {
+      position: absolute;
+      top: 50%;
+      width: 10px;
+      height: 10px;
+      margin-top: -5px;
+      margin-left: -5px;
+      border-radius: 50%;
+      background: #ced4da;
+    }
+
+    input[type="text"], input[type="password"], input[type="number"], input[type="time"], input[type="datetime-local"], select {
       width: 100%;
       padding: 10px;
       border-radius: 6px;
@@ -221,6 +283,9 @@
       button, a.settings-link { background: #34363a; color: #eee; border-color: #45484d; }
       button.primary { background: #2e7d4f; border-color: #2e7d4f; }
       #pacman-gameover { background: #3a331a; border-color: #6b5c26; }
+      .day-timeline { background: #373a40; }
+      .day-timeline-divider { background: #868e96; }
+      .day-timeline-label { color: #aaa; }
     }
   </style>
 </head>
@@ -363,6 +428,70 @@
           <label>Network name<input type="text" id="ap-ssid" required></label>
           <label>Password (at least 8 characters)<input type="password" id="ap-password" minlength="8" required></label>
           <button type="submit" class="primary">Create</button>
+        </fieldset>
+      </form>
+
+      <form id="datetime-form">
+        <fieldset>
+          <legend>Date &amp; time</legend>
+          <p>Current server time: <output id="datetime-server-time">&mdash;</output></p>
+          <label>
+            Device date and time
+            <input type="datetime-local" id="datetime-value" step="1">
+          </label>
+          <button type="button" id="datetime-use-browser-btn">Use browser time</button>
+          <button type="submit" class="primary">Set device time</button>
+        </fieldset>
+      </form>
+
+      <form id="location-form">
+        <fieldset>
+          <legend>Location</legend>
+          <label>
+            Latitude
+            <input type="number" id="location-latitude" step="any" min="-90" max="90" inputmode="decimal" placeholder="e.g. 52.520008">
+          </label>
+          <label>
+            Longitude
+            <input type="number" id="location-longitude" step="any" min="-180" max="180" inputmode="decimal" placeholder="e.g. 13.404954">
+          </label>
+          <button type="button" id="location-use-browser-btn">Use current location</button>
+          <button type="submit" class="primary">Save location</button>
+        </fieldset>
+      </form>
+
+      <form id="schedule-form">
+        <fieldset>
+          <legend>Schedule</legend>
+          <div id="schedule-day-timeline-wrap" class="day-timeline-wrap">
+            <span id="schedule-interval-start-text" class="day-timeline-label day-timeline-label-start" hidden></span>
+            <div id="schedule-day-timeline" class="day-timeline">
+              <div id="schedule-day-timeline-active" class="day-timeline-active" hidden></div>
+              <div id="schedule-day-timeline-divider" class="day-timeline-divider" hidden></div>
+              <div id="schedule-day-timeline-now" class="day-timeline-now" hidden></div>
+            </div>
+            <span id="schedule-interval-end-text" class="day-timeline-label day-timeline-label-end" hidden></span>
+          </div>
+          <label>
+            Mode
+            <select id="schedule-mode">
+              <option value="none">Always on</option>
+              <option value="automatic">Sunset to sunrise</option>
+              <option value="manual">Manual schedule</option>
+            </select>
+          </label>
+          <div id="schedule-manual-times" hidden>
+            <label>Start time<input type="time" id="schedule-start"></label>
+            <label>End time<input type="time" id="schedule-end"></label>
+            <label>
+              During this time
+              <select id="schedule-active-interval">
+                <option value="1">Lights on</option>
+                <option value="0">Lights off</option>
+              </select>
+            </label>
+          </div>
+          <button type="submit" class="primary">Save schedule</button>
         </fieldset>
       </form>
     </section>
@@ -510,6 +639,43 @@
         if (output) output.textContent = value
       }
 
+      function secondsToTimeString (seconds) {
+        var hours = Math.floor(seconds / 3600)
+        var minutes = Math.floor((seconds % 3600) / 60)
+        return (hours < 10 ? '0' : '') + hours + ':' + (minutes < 10 ? '0' : '') + minutes
+      }
+
+      function timeStringToSeconds (value) {
+        var parts = value.split(':')
+        return (Number(parts[0]) * 3600) + (Number(parts[1]) * 60)
+      }
+
+      function dateToLocalInputValue (date) {
+        function pad (n) { return (n < 10 ? '0' : '') + n }
+
+        return date.getFullYear() + '-' + pad(date.getMonth() + 1) + '-' + pad(date.getDate()) +
+          'T' + pad(date.getHours()) + ':' + pad(date.getMinutes()) + ':' + pad(date.getSeconds())
+      }
+
+      function formatServerDateTime (seconds) {
+        var date = new Date(seconds * 1000)
+        function pad (n) { return (n < 10 ? '0' : '') + n }
+
+        return date.getUTCFullYear() + '-' + pad(date.getUTCMonth() + 1) + '-' + pad(date.getUTCDate()) +
+          ' ' + pad(date.getUTCHours()) + ':' + pad(date.getUTCMinutes()) + ':' + pad(date.getUTCSeconds()) + ' UTC'
+      }
+
+      function formatServerTime (seconds) {
+        var date = new Date(seconds * 1000)
+        function pad (n) { return (n < 10 ? '0' : '') + n }
+
+        return pad(date.getUTCHours()) + ':' + pad(date.getUTCMinutes())
+      }
+
+      function clampPercent (value) {
+        return Math.max(0, Math.min(100, value))
+      }
+
       function render () {
         var dot = byId('status-dot')
         dot.className = 'dot dot-' + status
@@ -562,6 +728,88 @@
         byId('firework-ignite-btn').hidden = !fireworkRunning
 
         setSliderValue('settings-brightness', state.brightness)
+
+        if (state.datetime != null) {
+          byId('datetime-server-time').textContent = formatServerDateTime(state.datetime)
+        }
+
+        var location = state.location || {}
+        if (document.activeElement !== byId('location-latitude')) {
+          byId('location-latitude').value = location.latitude != null ? location.latitude : ''
+        }
+        if (document.activeElement !== byId('location-longitude')) {
+          byId('location-longitude').value = location.longitude != null ? location.longitude : ''
+        }
+
+        var schedule = state.schedule || {}
+        var scheduleModeSelect = byId('schedule-mode')
+        if (document.activeElement !== scheduleModeSelect) {
+          scheduleModeSelect.value = schedule.name || 'none'
+        }
+        byId('schedule-manual-times').hidden = scheduleModeSelect.value !== 'manual'
+        if (document.activeElement !== byId('schedule-start')) {
+          byId('schedule-start').value = schedule.start_at != null ? secondsToTimeString(schedule.start_at) : ''
+        }
+        if (document.activeElement !== byId('schedule-end')) {
+          byId('schedule-end').value = schedule.end_at != null ? secondsToTimeString(schedule.end_at) : ''
+        }
+        var scheduleActiveIntervalSelect = byId('schedule-active-interval')
+        if (document.activeElement !== scheduleActiveIntervalSelect) {
+          scheduleActiveIntervalSelect.value = schedule.active_interval ? '1' : '0'
+        }
+
+        var currentInterval = state.current_schedule_interval
+        var dayTimelineActive = byId('schedule-day-timeline-active')
+        var dayTimelineDivider = byId('schedule-day-timeline-divider')
+        var dayTimelineNow = byId('schedule-day-timeline-now')
+        var dayTimelineStartLabel = byId('schedule-interval-start-text')
+        var dayTimelineEndLabel = byId('schedule-interval-end-text')
+
+        if (state.datetime != null) {
+          var daySeconds = 86400
+          var dayStart = state.datetime - (state.datetime % daySeconds)
+          var spanDays = currentInterval &&
+            (currentInterval.start_at >= dayStart + daySeconds || currentInterval.end_at > dayStart + daySeconds)
+            ? 2 : 1
+          var timelineSeconds = daySeconds * spanDays
+
+          dayTimelineNow.style.left = clampPercent((state.datetime - dayStart) / timelineSeconds * 100) + '%'
+          dayTimelineNow.title = formatServerDateTime(state.datetime)
+          dayTimelineNow.hidden = false
+
+          dayTimelineDivider.style.left = (100 / spanDays) + '%'
+          dayTimelineDivider.hidden = spanDays === 1
+
+          if (currentInterval) {
+            var startPercent = clampPercent((currentInterval.start_at - dayStart) / timelineSeconds * 100)
+            var endPercent = clampPercent((currentInterval.end_at - dayStart) / timelineSeconds * 100)
+            var hasActiveRange = endPercent > startPercent
+
+            dayTimelineActive.style.left = startPercent + '%'
+            dayTimelineActive.style.width = (endPercent - startPercent) + '%'
+            dayTimelineActive.hidden = !hasActiveRange
+
+            dayTimelineStartLabel.textContent = formatServerTime(currentInterval.start_at)
+            dayTimelineStartLabel.title = formatServerDateTime(currentInterval.start_at)
+            dayTimelineStartLabel.style.left = startPercent + '%'
+            dayTimelineStartLabel.hidden = !hasActiveRange
+
+            dayTimelineEndLabel.textContent = formatServerTime(currentInterval.end_at)
+            dayTimelineEndLabel.title = formatServerDateTime(currentInterval.end_at)
+            dayTimelineEndLabel.style.right = (100 - endPercent) + '%'
+            dayTimelineEndLabel.hidden = !hasActiveRange
+          } else {
+            dayTimelineActive.hidden = true
+            dayTimelineStartLabel.hidden = true
+            dayTimelineEndLabel.hidden = true
+          }
+        } else {
+          dayTimelineNow.hidden = true
+          dayTimelineActive.hidden = true
+          dayTimelineDivider.hidden = true
+          dayTimelineStartLabel.hidden = true
+          dayTimelineEndLabel.hidden = true
+        }
 
         var wirelessNetwork = state.wireless_network || {}
         byId('wifi-status').textContent =
@@ -656,6 +904,73 @@
 
       byId('byte-alignment').addEventListener('change', function () {
         send('displays.byte.alignment', byId('byte-alignment').value)
+      })
+
+      byId('datetime-use-browser-btn').addEventListener('click', function () {
+        byId('datetime-value').value = dateToLocalInputValue(new Date())
+      })
+
+      byId('datetime-form').addEventListener('submit', function (event) {
+        event.preventDefault()
+
+        var value = byId('datetime-value').value
+        if (!value) return
+
+        var date = new Date(value)
+        if (isNaN(date.getTime())) return
+
+        send('datetime', Math.floor(date.getTime() / 1000))
+      })
+
+      byId('location-use-browser-btn').addEventListener('click', function () {
+        if (!navigator.geolocation) return
+
+        navigator.geolocation.getCurrentPosition(function (position) {
+          byId('location-latitude').value = position.coords.latitude
+          byId('location-longitude').value = position.coords.longitude
+        }, function (error) {
+          console.log('geolocation error', error)
+        })
+      })
+
+      byId('location-form').addEventListener('submit', function (event) {
+        event.preventDefault()
+
+        var latitudeValue = byId('location-latitude').value
+        var longitudeValue = byId('location-longitude').value
+
+        if (latitudeValue === '' || longitudeValue === '') return
+
+        send('location', Number(latitudeValue), Number(longitudeValue))
+      })
+
+      byId('schedule-mode').addEventListener('change', function () {
+        byId('schedule-manual-times').hidden = byId('schedule-mode').value !== 'manual'
+      })
+
+      byId('schedule-form').addEventListener('submit', function (event) {
+        event.preventDefault()
+
+        var mode = byId('schedule-mode').value
+
+        if (mode !== 'manual') {
+          send('schedule', mode)
+          return
+        }
+
+        var startValue = byId('schedule-start').value
+        var endValue = byId('schedule-end').value
+
+        if (!startValue || !endValue) return
+
+        var startSeconds = timeStringToSeconds(startValue)
+        var endSeconds = timeStringToSeconds(endValue)
+
+        // The device asserts start <= end for a manual schedule; guard
+        // here so an invalid combination is never sent over the wire.
+        if (startSeconds > endSeconds) return
+
+        send('schedule', mode, startSeconds, endSeconds, Number(byId('schedule-active-interval').value))
       })
 
       var confirmDialog = byId('confirm-dialog')
