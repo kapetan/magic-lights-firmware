@@ -4,3 +4,6 @@
 [submodule "lib/microdot"]
 	path = lib/microdot
 	url = git@github.com:miguelgrinberg/microdot.git
+[submodule "lib/micropython-suntime"]
+	path = lib/micropython-suntime
+	url = git@github.com:lorcap/micropython-suntime.git

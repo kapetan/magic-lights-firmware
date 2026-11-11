@@ -5,15 +5,18 @@ import network
 import errno
 import json
 import struct
+from io import StringIO
 from collections import namedtuple
-from machine import Pin
+from machine import Pin, RTC, Timer
 from micropython import const
 from neopixel import NeoPixel
 from microdot import Microdot, send_file
 from microdot.websocket import with_websocket
+from suntime.suntime import Suntime
 from . import pacman
 from . import firework
 from . import fs
+from . import aiontp
 from .engine_utils import Bounds
 from .color_utils import (
     native_hsv_to_rgb,
@@ -25,15 +28,24 @@ from .atomic_file import AtomicFile
 _PIN_PIXELS = const(15)
 _PIN_LED = const('LED')
 
+_DAY_SECONDS = const(24 * 60 * 60)
+_MILLENNIUM_UNIX_EPOCH_DAYS = const(10957) # days between 1970-01-01 and 2000-01-01
+
 _PIXEL_COUNT = const(240)
 
 _WLAN_CONNECT_TIMEOUT_MS = const(30000)
 
-_SETTINGS_PATH = const('/config.json')
+_SETTINGS_PATH = const('/config.bin')
 
 _DEFAULT_BRIGHTNESS = const(127)
+_DEFAULT_LATITUDE = const(55.676097) # Copenhagen, Denmark
+_DEFAULT_LONGITUDE = const(12.568337)
 _DEFAULT_SSID = const('magic-lights')
 _DEFAULT_KEY = const('magic-lights')
+
+_SCHEDULE_NONE = const(0)
+_SCHEDULE_MANUAL = const(1)
+_SCHEDULE_AUTOMATIC = const(2)
 
 _ALIGNMENT_START = const('start')
 _ALIGNMENT_CENTER = const('center')
@@ -61,26 +73,109 @@ def format_interface(interface):
 def format_mac_address(mac_add):
     return ':'.join(f'{x:02x}' for x in mac_add)
 
-def format_alignment(alignment):
-    if alignment == _ALIGNMENT_START:
-        return 'start'
-    elif alignment == _ALIGNMENT_CENTER:
-        return 'center'
-    elif alignment == _ALIGNMENT_END:
-        return 'end'
-
 def parse_alignment(value):
-    if value == 'start':
-        return _ALIGNMENT_START
-    elif value == 'center':
-        return _ALIGNMENT_CENTER
-    elif value == 'end':
-        return _ALIGNMENT_END
+    if (value == _ALIGNMENT_START
+            or value == _ALIGNMENT_CENTER
+            or value == _ALIGNMENT_END):
+        return value
 
     return _ALIGNMENT_CENTER
 
+def parse_display(displays, name):
+    if name == 'none':
+        return displays.none
+    elif name == 'rainbow':
+        return displays.rainbow
+    elif name == 'pacman':
+        return displays.pacman
+    elif name == 'byte':
+        return displays.byte
+    elif name == 'firework':
+        return displays.firework
+
+def format_schedule(schedule):
+    if schedule == _SCHEDULE_NONE:
+        return 'none'
+    elif schedule == _SCHEDULE_MANUAL:
+        return 'manual'
+    elif schedule == _SCHEDULE_AUTOMATIC:
+        return 'automatic'
+
+def parse_schedule(value):
+    if value == 'none':
+        return _SCHEDULE_NONE
+    elif value == 'manual':
+        return _SCHEDULE_MANUAL
+    elif value == 'automatic':
+        return _SCHEDULE_AUTOMATIC
+
+def next_day(hour=0, minute=0, second=0):
+    now = time.time()
+    start_of_next_day = now + (_DAY_SECONDS - (now % _DAY_SECONDS))
+    return start_of_next_day + (3600 * hour) + (60 * minute) + second
+
+def closest_active_interval(timestamp, start_at, end_at, active_interval):
+    assert start_at <= end_at
+
+    start_of_day = timestamp - (timestamp % _DAY_SECONDS)
+    end_of_day = start_of_day + _DAY_SECONDS - 1
+    start_of_interval = start_of_day + start_at
+    end_of_interval = start_of_day + end_at
+
+    if start_of_day <= timestamp < start_of_interval:
+        return (start_of_interval, end_of_interval) if active_interval else (start_of_day, start_of_interval)
+    elif start_of_interval <= timestamp <= end_of_interval:
+        return (start_of_interval, end_of_interval) if active_interval else (end_of_interval, end_of_day)
+    else:
+        return ((start_of_interval + _DAY_SECONDS, end_of_interval + _DAY_SECONDS)
+                if active_interval
+                else (end_of_interval, end_of_day))
+
+def unix_time(timestamp=None):
+    epoch_year, *_ = time.gmtime(0)
+    delta = 0
+
+    if epoch_year == 2000:
+        delta = _MILLENNIUM_UNIX_EPOCH_DAYS * _DAY_SECONDS
+    elif epoch_year != 1970:
+        raise OSError(errno.EOPNOTSUPP)
+
+    if timestamp is None:
+        timestamp = time.time()
+
+    return timestamp + delta
+
+def parse_time(value):
+    epoch_year, *_ = time.gmtime(0)
+    delta = 0
+
+    if epoch_year == 2000:
+        delta = _MILLENNIUM_UNIX_EPOCH_DAYS * _DAY_SECONDS
+    elif epoch_year != 1970:
+        raise OSError(errno.EOPNOTSUPP)
+
+    return value - delta
+
+def create_schedule_from_settings(settings):
+    if settings.schedule == _SCHEDULE_MANUAL:
+        return FixedSchedule(settings.schedule_start_at, settings.schedule_end_at, settings.schedule_active_interval)
+    elif settings.schedule == _SCHEDULE_AUTOMATIC:
+        return SuntimeSchedule(settings.latitude, settings.longitude)
+
+def rtc_datetime(seconds_since_epoch):
+    try:
+        now = time.gmtime(seconds_since_epoch)
+    except OverflowError as e:
+        # if the server does not have the correct time set
+        # the conversion might overflow.
+        raise OSError(errno.EINVAL) from e
+
+    year, month, day, hour, minute, second, week_day, _ = now
+    rtc = RTC()
+    rtc.datetime((year, month, day, week_day + 1, hour, minute, second, 0))
+
 def log_message(*message):
-    year, month, day, week_day, hour, minute, second, subseconds = time.localtime()
+    year, month, day, hour, minute, second, *_ = time.gmtime()
     sys.stderr.write(f'[{year}-{month:02d}-{day:02d} {hour:02d}:{minute:02d}:{second:02d}]:')
 
     for part in message:
@@ -89,118 +184,191 @@ def log_message(*message):
 
     sys.stderr.write('\n')
 
+def log_error(err, *message):
+    file = StringIO()
+    sys.print_exception(err, file)
+    log_message(*message)
+    sys.stderr.write(file.getvalue())
+    sys.stderr.write('\n')
+
 def wlan_reset(wlan):
     wlan.active(False)
     wlan.active(True)
 
-class Timer:
-    counter = 0
+def define_struct(name, byte_order, fields):
+    _Struct = namedtuple(name, tuple(field_name for field_name, _ in fields))
 
-    @classmethod
-    def increase(cls):
-        current = cls.counter
-        cls.counter += 1
-        return current
+    class Struct(_Struct):
+        FORMAT = byte_order + ''.join(field_type for _, field_type in fields)
+        BUFFER = bytearray(struct.calcsize(FORMAT))
 
-    def __init__(self, message=None):
-        self.started = 0
-        self.message = message
+        @classmethod
+        def unpack(cls, buffer, offset=0):
+            values = struct.unpack_from(cls.FORMAT, buffer, offset)
+            return cls(*values)
 
-    def __enter__(self):
-        self.start()
-        return self
+        @classmethod
+        def read(cls, name):
+            with open(name, 'rb') as file:
+                read = file.readinto(cls.BUFFER)
 
-    def __exit__(self, exc_type, exc_value, traceback):
-        self.stop(self.message)
-        return False
+                if read < len(cls.BUFFER):
+                    raise OSError('not enough data read')
 
-    def start(self):
-        self.started = time.ticks_ms()
+                return cls.unpack(cls.BUFFER)
 
-    def stop(self, message=None):
-        now = time.ticks_ms()
-        delta = time.ticks_diff(now, self.started)
+        def pack(self, buffer, offset=0):
+            struct.pack_into(self.FORMAT, buffer, offset, *self)
 
-        if not message:
-            message = f'Timer {self.increase()}'
+        def write(self, name):
+            self.pack(self.BUFFER)
 
-        print(message, f'{delta}ms')
+            with AtomicFile.open(name, 'w+b') as file:
+                file.write(self.BUFFER)
 
-DisplayTuple = namedtuple('DisplayTuple', ('rainbow', 'pacman', 'byte', 'firework'))
+    return Struct
+
+class TimerCallback:
+    def __init__(self):
+        self.callbacks = []
+        self.task = None
+
+    def __call__(self, timer):
+        if not self.task:
+            self.task = asyncio.create_task(self.execute())
+
+    async def execute(self):
+        function_type = type(lambda: 0)
+        now = time.time()
+
+        for entry in list(self.callbacks):
+            timestamp, fn = entry
+
+            if now >= timestamp:
+                self.callbacks.remove(entry)
+
+                if isinstance(fn, function_type):
+                    fn()
+                else:
+                    await fn()
+
+        self.task = None
+
+    def schedule(self, timestamp, fn):
+        self.callbacks.append((timestamp, fn))
+
+    def unschedule(self, fn):
+        for i, (_, other) in enumerate(self.callbacks):
+            if fn == other:
+                self.callbacks.pop(i)
+                break
+
+class SuntimeSchedule:
+    def __init__(self, latitude, longitude):
+        self.suntime = Suntime(latitude, longitude)
+
+    def closest_active_interval(self, timestamp):
+        year, month, day, *_ = time.gmtime(timestamp)
+        self.suntime.calc_sunrise_sunset(year, month, day)
+        sunrise_minutes = self.suntime.sunrise
+        sunset_minutes = self.suntime.sunset
+
+        return closest_active_interval(timestamp, sunrise_minutes * 60, sunset_minutes * 60, False)
+
+class FixedSchedule:
+    def __init__(self, start_at, end_at, active_interval):
+        assert start_at <= end_at
+
+        self.start_at = start_at
+        self.end_at = end_at
+        self.active_interval = active_interval
+
+    def closest_active_interval(self, timestamp):
+        return closest_active_interval(timestamp, self.start_at, self.end_at, self.active_interval)
+
+ScheduleInterval = namedtuple('ScheduleInterval', ('start_at', 'end_at', 'timestamp', 'active'))
+
+DisplayTuple = namedtuple('DisplayTuple', ('none', 'rainbow', 'pacman', 'byte', 'firework'))
 
 WirelessNetwork = namedtuple('WirelessNetwork', ('interface', 'ssid', 'key'))
 
-_SettingsStruct = namedtuple('SettingsStruct', (
-    'version',
-    'brightness',
-    'interface',
-    'ssid_length',
-    'ssid_buffer',
-    'key_length',
-    'key_buffer'))
-
-class SettingsStruct(_SettingsStruct):
-    FORMAT = '>BBBB32sB64s'
-    BUFFER = bytearray(struct.calcsize(FORMAT))
-
-    @classmethod
-    def unpack(cls, buffer, offset=0):
-        values = struct.unpack_from(cls.FORMAT, buffer, offset)
-        return cls(*values)
-
-    @classmethod
-    def read(cls, name):
-        with open(name, 'rb') as file:
-            read = file.readinto(cls.BUFFER)
-
-            if read < len(cls.BUFFER):
-                raise OSError('not enough data read')
-
-            return cls.unpack(cls.BUFFER)
-
-    @property
-    def ssid(self):
-        return self.ssid_buffer[0:self.ssid_length]
-
-    @property
-    def key(self):
-        return self.key_buffer[0:self.key_length]
-
-    def pack(self, buffer, offset=0):
-        struct.pack_into(self.FORMAT, buffer, offset, *self)
-
-    def write(self, name):
-        self.pack(self.BUFFER)
-
-        with AtomicFile.open(name, 'w+b') as file:
-            file.write(self.BUFFER)
+SettingsStruct = define_struct('SettingsStruct', '>', (
+    ('version', 'B'),
+    ('brightness', 'B'),
+    ('latitude', 'f'),
+    ('longitude', 'f'),
+    ('schedule', 'B'),
+    ('schedule_start_at', 'I'),
+    ('schedule_end_at', 'I'),
+    ('schedule_active_interval', 'B'),
+    ('interface', 'B'),
+    ('ssid_length', 'B'),
+    ('ssid_buffer', '32s'),
+    ('key_length', 'B'),
+    ('key_buffer', '64s')
+))
 
 class Settings:
     @classmethod
-    def read(cls, name):
+    def read(cls, name=_SETTINGS_PATH):
         try:
             struct = SettingsStruct.read(name)
             return cls(
                 struct.brightness,
+                struct.latitude,
+                struct.longitude,
+                struct.schedule,
+                struct.schedule_start_at,
+                struct.schedule_end_at,
+                struct.schedule_active_interval,
                 struct.interface,
-                struct.ssid,
-                struct.key)
+                struct.ssid_buffer[0:struct.ssid_length],
+                struct.key_buffer[0:struct.key_length])
         except OSError:
             return cls(
                 _DEFAULT_BRIGHTNESS,
+                _DEFAULT_LATITUDE,
+                _DEFAULT_LONGITUDE,
+                _SCHEDULE_AUTOMATIC,
+                0,
+                0,
+                0,
                 network.WLAN.IF_AP,
                 _DEFAULT_SSID,
                 _DEFAULT_KEY)
 
-    def __init__(self, brightness, interface, ssid, key):
+    def __init__(
+            self,
+            brightness,
+            latitude,
+            longitude,
+            schedule,
+            schedule_start_at,
+            schedule_end_at,
+            schedule_active_interval,
+            interface,
+            ssid,
+            key):
         self.brightness = brightness
+        self.latitude = latitude
+        self.longitude = longitude
+        self.schedule = schedule
+        self.schedule_start_at = schedule_start_at
+        self.schedule_end_at = schedule_end_at
+        self.schedule_active_interval = schedule_active_interval
         self.interface = interface
         self.ssid = ssid
         self.key = key
 
-    def write(self, name):
+    def write(self, name=_SETTINGS_PATH):
         struct = SettingsStruct(1,
             self.brightness,
+            self.latitude,
+            self.longitude,
+            self.schedule,
+            self.schedule_start_at,
+            self.schedule_end_at,
+            self.schedule_active_interval,
             self.interface,
             len(self.ssid),
             self.ssid,
@@ -208,6 +376,21 @@ class Settings:
             self.key)
 
         struct.write(name)
+
+class NoneDisplay:
+    _COLOR_BLACK = (0, 0, 0)
+
+    def __init__(self, pixels):
+        self.pixels = pixels
+
+    def reset(self):
+        pass
+
+    async def run(self):
+        for i in range(len(self.pixels)):
+            self.pixels[i] = self._COLOR_BLACK
+
+        self.pixels.write()
 
 class FireworkDisplay:
     def __init__(self, pixels, settings):
@@ -403,8 +586,9 @@ class PacmanDisplay:
             await asyncio.sleep_ms(16)
 
 class Controller:
-    def __init__(self, pixels, displays, settings):
+    def __init__(self, pixels, timer, displays, settings):
         self.pixels = pixels
+        self.timer = timer
         self.displays = displays
         self.settings = settings
         self.task = None
@@ -440,14 +624,20 @@ class Controller:
             else:
                 log_message(f'Failed to connect to wireless network with SSID {ssid}.')
                 raise OSError(errno.ETIMEDOUT)
+
+            ip, subnet, gateway, dns = wlan.ifconfig()
+            log_message(
+                'Successfully connected to wireless network with SSID', ssid,
+                'IP', ip,
+                'subnet', subnet,
+                'gateway', gateway,
+                'DNS', dns)
         except:
             try:
                 wlan.disconnect()
             except OSError:
                 # Might not have been connected
                 pass
-
-            wlan.active(False)
 
         return wlan
 
@@ -471,6 +661,7 @@ class Controller:
 
             if not wlan.isconnected() and current_network.interface == network.WLAN.IF_AP:
                 # Stay reachable, fall back to the configured access point
+                wlan.active(False)
                 wlan = self.create_wireless_network_access_point(current_network.ssid, current_network.key)
                 wireless_network = current_network
 
@@ -479,7 +670,10 @@ class Controller:
     async def run(self):
         network.hostname('magic-lights')
 
+        timer_callback = TimerCallback()
         display_name = None
+        schedule = create_schedule_from_settings(self.settings)
+        current_schedule_interval = None
         clients = set()
         wlan, wireless_network, available_networks = await self.setup_wireless_network(
             WirelessNetwork(self.settings.interface, self.settings.ssid, self.settings.key),
@@ -488,11 +682,49 @@ class Controller:
         ip, subnet, gateway, dns = wlan.ifconfig()
         log_message(
             'WiFi enabled in', format_interface(wireless_network.interface),
-            'mode and with SSID', self.settings.ssid,
+            'mode and with SSID', wireless_network.ssid,
             'IP', ip,
             'subnet', subnet,
             'gateway', gateway,
             'DNS', dns)
+
+        async def synchronize_time():
+            try:
+                timestamp = await aiontp.time()
+            except OSError as e:
+                log_error(e, 'Failed to query NTP server.')
+            else:
+                rtc_datetime(timestamp)
+                log_message('Synchronized with NTP server', str(timestamp))
+
+            timer_callback.schedule(next_day(hour=1), synchronize_time)
+
+        async def update_schedule():
+            nonlocal current_schedule_interval
+
+            timestamp = time.time()
+            start, end = schedule.closest_active_interval(timestamp)
+            active = start <= timestamp <= end
+            current_schedule_interval = ScheduleInterval(start, end, timestamp, active)
+
+            log_message(f'Processing schedule. Closest active interval [{start}, {end}].')
+
+            if active:
+                if not self.task:
+                    display = parse_display(self.displays, display_name)
+
+                    if display:
+                        self.task = asyncio.create_task(display_run(display))
+
+                timer_callback.schedule(end, update_schedule)
+            else:
+                await display_stop()
+                await self.displays.none.run()
+
+                timer_callback.schedule(start, update_schedule)
+
+            await broadcast()
+            return active
 
         def serialize_state():
             ip, *_ = wlan.ifconfig()
@@ -501,6 +733,8 @@ class Controller:
                 display=display_name,
                 brightness=self.settings.brightness,
                 available_displays=[
+                    dict(
+                        name='none'),
                     dict(
                         name='rainbow',
                         repetitions=self.displays.rainbow.repetitions,
@@ -513,9 +747,23 @@ class Controller:
                     dict(
                         name='byte',
                         buffer=list(self.displays.byte.buffer),
-                        alignment=format_alignment(self.displays.byte.alignment)),
+                        alignment=self.displays.byte.alignment),
                     dict(
                         name='firework')],
+                datetime=unix_time(),
+                location=dict(
+                    latitude=self.settings.latitude,
+                    longitude=self.settings.longitude),
+                schedule=dict(
+                    name=format_schedule(self.settings.schedule),
+                    start_at=self.settings.schedule_start_at,
+                    end_at=self.settings.schedule_end_at,
+                    active_interval=self.settings.schedule_active_interval),
+                current_schedule_interval=dict(
+                    start_at=unix_time(current_schedule_interval.start_at),
+                    end_at=unix_time(current_schedule_interval.end_at),
+                    datetime=unix_time(current_schedule_interval.timestamp),
+                    active=current_schedule_interval.active) if (current_schedule_interval and schedule) else None,
                 wireless_network=dict(
                     interface=format_interface(wireless_network.interface),
                     ssid=wireless_network.ssid,
@@ -535,13 +783,29 @@ class Controller:
                 try:
                     await ws.send(message)
                 except Exception as e:
-                    log_message(format_client_address(ws.request.client_addr), 'WebSocket send error:', str(e))
+                    log_error(e, format_client_address(ws.request.client_addr), 'WebSocket send error.')
                     clients.discard(ws)
 
         async def display_run(display):
+            log_message(f'Running display {display_name}.')
+
+            display.reset()
             await display.run()
             self.task = None
             await broadcast()
+
+        async def display_stop():
+            log_message('Stopping display.')
+
+            if self.task:
+                self.task.cancel()
+
+                try:
+                    await self.task
+                except asyncio.CancelledError:
+                    pass
+
+                self.task = None
 
         def display_ip(ip):
             nonlocal display_name
@@ -565,7 +829,7 @@ class Controller:
         @app.route('/api/ws')
         @with_websocket
         async def ws(request, ws):
-            nonlocal wlan, wireless_network, available_networks, display_name
+            nonlocal wlan, wireless_network, available_networks, display_name, schedule
 
             clients.add(ws)
             log_message(format_client_address(request.client_addr), 'WebSocket client connected.')
@@ -581,40 +845,59 @@ class Controller:
                         action, *args = message
                         log_message(
                             format_client_address(request.client_addr),
-                            f'Received WebSocket client message of type {action}:',
-                            ', '.join(str(x) for x in args))
+                            f'Received WebSocket client message {action}{tuple(args)}')
 
                         if action == 'run_display':
                             name, = args
-                            display = None
-
-                            if name == 'rainbow':
-                                display = self.displays.rainbow
-                            elif name == 'pacman':
-                                display = self.displays.pacman
-                            elif name == 'byte':
-                                display = self.displays.byte
-                            elif name == 'firework':
-                                display = self.displays.firework
+                            display = parse_display(self.displays, name)
 
                             if display:
-                                if self.task:
-                                    self.task.cancel()
-
-                                    try:
-                                        await self.task
-                                    except asyncio.CancelledError:
-                                        pass
-
-                                    self.task = None
-
-                                display.reset()
+                                await display_stop()
                                 self.task = asyncio.create_task(display_run(display))
                                 display_name = name
                         elif action == 'brightness':
                             value, = args
                             self.settings.brightness = value
-                            self.settings.write(_SETTINGS_PATH)
+                            self.settings.write()
+                        elif action == 'location':
+                            latitude, longitude = args
+
+                            if self.settings.schedule == _SCHEDULE_AUTOMATIC:
+                                schedule = SuntimeSchedule(latitude, longitude)
+                                timer_callback.unschedule(update_schedule)
+                                await update_schedule()
+
+                            self.settings.latitude = latitude
+                            self.settings.longitude = longitude
+                            self.settings.write()
+                        elif action == 'datetime':
+                            value, = args
+                            timestamp = parse_time(value)
+                            rtc_datetime(timestamp)
+                        elif action == 'schedule':
+                            value, *rest = args
+                            value = parse_schedule(value)
+
+                            if value == _SCHEDULE_MANUAL:
+                                schedule_start_at, schedule_end_at, schedule_active_interval = rest
+
+                                if 0 <= schedule_start_at < _DAY_SECONDS and 0 <= schedule_end_at < _DAY_SECONDS:
+                                    self.settings.schedule_start_at = schedule_start_at
+                                    self.settings.schedule_end_at = schedule_end_at
+                                    self.settings.schedule_active_interval = schedule_active_interval
+                                else:
+                                    continue
+                            elif value != _SCHEDULE_AUTOMATIC and value != _SCHEDULE_NONE:
+                                continue
+
+                            self.settings.schedule = value
+                            schedule = create_schedule_from_settings(self.settings)
+                            timer_callback.unschedule(update_schedule)
+
+                            if value != _SCHEDULE_NONE:
+                                await update_schedule()
+
+                            self.settings.write()
                         elif action == 'create_wireless_network_access_point':
                             ssid, key = args
                             wlan, wireless_network, available_networks = await self.setup_wireless_network(
@@ -628,7 +911,8 @@ class Controller:
                             self.settings.interface = wireless_network.interface
                             self.settings.ssid = wireless_network.ssid
                             self.settings.key = wireless_network.key
-                            self.settings.write(_SETTINGS_PATH)
+                            self.settings.write()
+                            timer_callback.unschedule(synchronize_time)
                         elif action == 'connect_wireless_network_station':
                             ssid, key = args
                             wlan, wireless_network, available_networks = await self.setup_wireless_network(
@@ -643,7 +927,10 @@ class Controller:
                                 self.settings.interface = wireless_network.interface
                                 self.settings.ssid = wireless_network.ssid
                                 self.settings.key = wireless_network.key
-                                self.settings.write(_SETTINGS_PATH)
+                                self.settings.write()
+
+                                timer_callback.unschedule(synchronize_time)
+                                await synchronize_time()
                         elif action == 'displays.rainbow.repetitions':
                             value, = args
                             self.displays.rainbow.repetitions = value
@@ -672,8 +959,23 @@ class Controller:
                 clients.discard(ws)
                 log_message(format_client_address(request.client_addr), 'WebSocket client disconnect.')
 
-        display_ip(ip)
-        await app.start_server(port=80)
+        if wireless_network.interface == network.WLAN.IF_STA and wlan.isconnected():
+            await synchronize_time()
+
+        if schedule:
+            active = await update_schedule()
+        else:
+            active = True
+
+        if not display_name and active:
+            display_ip(ip)
+
+        self.timer.init(mode=Timer.PERIODIC, period=60_000, callback=timer_callback)
+
+        try:
+            await app.start_server(port=80)
+        finally:
+            self.timer.deinit()
 
 def run_safe(coro):
     try:
@@ -707,15 +1009,17 @@ def run_safe(coro):
 def main(wdt):
     led = Pin(_PIN_LED, Pin.OUT)
     pixels = NeoPixel(Pin(_PIN_PIXELS), _PIXEL_COUNT)
+    timer = Timer()
 
     led.on()
 
-    settings = Settings.read(_SETTINGS_PATH)
+    settings = Settings.read()
     displays = DisplayTuple(
+        NoneDisplay(pixels),
         RainbowDisplay(pixels, settings),
         PacmanDisplay(pixels, settings),
         ByteDisplay(pixels, settings),
         FireworkDisplay(pixels, settings))
-    controller = Controller(pixels, displays, settings)
+    controller = Controller(pixels, timer, displays, settings)
 
     run_safe(controller.run())

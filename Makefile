@@ -7,6 +7,9 @@ OUTPUT := output/$(BUILD)
 PY_MAIN := main.py
 MPY_FILES := $(addprefix $(OUTPUT)/$(SOURCE)/,\
 	__init__.mpy \
+	aioudp.mpy \
+	aiodns.mpy \
+	aiontp.mpy \
 	magic_lights.mpy \
 	pacman.mpy \
 	firework.mpy \
@@ -18,6 +21,7 @@ MPY_FILES := $(addprefix $(OUTPUT)/$(SOURCE)/,\
 	version.mpy)
 NATIVE_MPY_FILES := $(addprefix $(OUTPUT)/$(SOURCE)/,firework_native.mpy color_utils_native.mpy)
 LIBRARY_MICRODOT_MPY_FILES := $(addprefix $(OUTPUT)/microdot/,__init__.mpy microdot.mpy websocket.mpy helpers.mpy)
+LIBRARY_MICROPYTHON_SUNTIME_MPY_FILES := $(addprefix $(OUTPUT)/suntime/,__init__.mpy suntime.mpy)
 HTML_FILE = $(OUTPUT)/web/index.html.gz
 
 ifndef SERIAL
@@ -81,6 +85,7 @@ $(OUTPUT)/main.py: $(PY_MAIN)
 	cp $(PY_MAIN) $(OUTPUT)/main.py
 
 $(eval $(call INCLUDE_LIBRARY,$(LIBRARY_MICRODOT_MPY_FILES),microdot/src/microdot))
+$(eval $(call INCLUDE_LIBRARY,$(LIBRARY_MICROPYTHON_SUNTIME_MPY_FILES),micropython-suntime/suntime))
 
 $(MPY_FILES) $(NATIVE_MPY_FILES) $(OUTPUT)/main.py $(LIBRARY_MPY_FILES) $(HTML_FILE): | $(OUTPUT)
 
