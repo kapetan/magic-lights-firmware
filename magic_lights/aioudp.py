@@ -31,16 +31,3 @@ async def sock_recv_into(sock, buf, poll_ms=10):
             await asyncio.sleep_ms(poll_ms)
     finally:
         poller.unregister(sock)
-
-# class Reader:
-#     def __init__(self, socket):
-#         self._socket = socket
-#         self.poller = None
-
-#     def __enter__(self):
-#         self.poller = select.poll()
-#         self.poller.register(self.socket, select.POLLIN)
-#         return self
-
-#     def __exit__(self, exc_type, exc_val, exc_tb):
-#         self.poller.unregister(self.socket)

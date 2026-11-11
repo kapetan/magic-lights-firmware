@@ -2,15 +2,12 @@ import os
 import time as _time
 import asyncio
 import struct
-# import socket
 import errno
 from . import aioudp
 from . import aiodns
 
 # https://github.com/micropython/micropython-lib/blob/660ddd89dd958d8d835ecbbcb323f3cfcd891c30/micropython/net/ntptime/ntptime.py
 async def time(host='pool.ntp.org', port=123, timeout_ms=5000):
-    # addr = socket.getaddrinfo(host, port)[0][-1]
-
     if aiodns.is_ipv4(host):
         addr = (host, port)
     else:
@@ -21,8 +18,6 @@ async def time(host='pool.ntp.org', port=123, timeout_ms=5000):
         addr = (candidates[0], port)
 
     sock = aioudp.create_socket()
-    # sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    # sock.setblocking(False)
 
     nonce = os.urandom(8)
     buffer = bytearray(48)
@@ -30,11 +25,6 @@ async def time(host='pool.ntp.org', port=123, timeout_ms=5000):
     buffer[40:48] = nonce
 
     try:
-        # poller = select.poll()
-        # poller.register(sock, select.POLLIN)
-
-        # sock.sendto(buffer, addr)
-
         aioudp.sock_sendto(sock, buffer, addr)
 
         try:
@@ -43,29 +33,8 @@ async def time(host='pool.ntp.org', port=123, timeout_ms=5000):
             raise OSError(errno.ETIMEDOUT) from e
 
         if n != len(buffer) or buffer[1] == 0 or buffer[24:32] != nonce:
-            raise OSError(errno.EIO)
-
-        # deadline_ms = _time.ticks_add(_time.ticks_ms(), timeout_ms)
-
-        # while True:
-        #     for _, event, *_ in poller.ipoll(0):
-        #         if event & select.POLLIN:
-        #             n = sock.readinto(buffer)
-
-        #             if n == len(buffer) and buffer[1] != 0 and buffer[24:32] == nonce:
-        #                 break
-        #         elif event & (select.POLLHUP | select.POLLERR):
-        #             raise OSError(errno.EIO)
-        #     else:
-        #         if _time.ticks_diff(deadline_ms, _time.ticks_ms()) <= 0:
-        #             raise OSError(errno.ETIMEDOUT)
-
-        #         await asyncio.sleep_ms(10)
-        #         continue
-
-        #     break
+            raise OSError(errno.EINVAL)
     finally:
-        # poller.unregister(sock)
         sock.close()
 
     val, = struct.unpack("!I", buffer[40:44])

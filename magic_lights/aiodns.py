@@ -100,7 +100,7 @@ async def resolve(domain, ip=None, port=53, timeout_ms=5000):
         response_code = response[3] & 0x0f
 
         if n < _HEADER_LENGTH or response[0:2] != id or response_code != 0:
-            raise OSError(errno.EIO)
+            raise OSError(errno.EINVAL)
 
         qdcount = decode_uint16_be(response, 4)
         ancount = decode_uint16_be(response, 6)
