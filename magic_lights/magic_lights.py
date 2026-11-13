@@ -5,6 +5,7 @@ import network
 import errno
 import json
 import struct
+import math
 from io import StringIO
 from collections import namedtuple
 from machine import Pin, RTC, Timer
@@ -43,13 +44,8 @@ _DEFAULT_LONGITUDE = const(12.568337)
 _DEFAULT_SSID = const('magic-lights')
 _DEFAULT_KEY = const('magic-lights')
 
-_SCHEDULE_NONE = const(0)
-_SCHEDULE_MANUAL = const(1)
-_SCHEDULE_AUTOMATIC = const(2)
-
-_ALIGNMENT_START = const('start')
-_ALIGNMENT_CENTER = const('center')
-_ALIGNMENT_END = const('end')
+_Number = (int, float)
+_Function = type(lambda: 0)
 
 def format_security(security):
     if security == 0:
@@ -73,41 +69,8 @@ def format_interface(interface):
 def format_mac_address(mac_add):
     return ':'.join(f'{x:02x}' for x in mac_add)
 
-def parse_alignment(value):
-    if (value == _ALIGNMENT_START
-            or value == _ALIGNMENT_CENTER
-            or value == _ALIGNMENT_END):
-        return value
-
-    return _ALIGNMENT_CENTER
-
 def parse_display(displays, name):
-    if name == 'none':
-        return displays.none
-    elif name == 'rainbow':
-        return displays.rainbow
-    elif name == 'pacman':
-        return displays.pacman
-    elif name == 'byte':
-        return displays.byte
-    elif name == 'firework':
-        return displays.firework
-
-def format_schedule(schedule):
-    if schedule == _SCHEDULE_NONE:
-        return 'none'
-    elif schedule == _SCHEDULE_MANUAL:
-        return 'manual'
-    elif schedule == _SCHEDULE_AUTOMATIC:
-        return 'automatic'
-
-def parse_schedule(value):
-    if value == 'none':
-        return _SCHEDULE_NONE
-    elif value == 'manual':
-        return _SCHEDULE_MANUAL
-    elif value == 'automatic':
-        return _SCHEDULE_AUTOMATIC
+    return displays[DisplayEnum.parse(name)]
 
 def next_day(hour=0, minute=0, second=0):
     now = time.time()
@@ -157,9 +120,9 @@ def parse_time(value):
     return value - delta
 
 def create_schedule_from_settings(settings):
-    if settings.schedule == _SCHEDULE_MANUAL:
+    if settings.schedule == ScheduleEnum.manual:
         return FixedSchedule(settings.schedule_start_at, settings.schedule_end_at, settings.schedule_active_interval)
-    elif settings.schedule == _SCHEDULE_AUTOMATIC:
+    elif settings.schedule == ScheduleEnum.automatic:
         return SuntimeSchedule(settings.latitude, settings.longitude)
 
 def rtc_datetime(seconds_since_epoch):
@@ -195,6 +158,23 @@ def wlan_reset(wlan):
     wlan.active(False)
     wlan.active(True)
 
+def define_enum(name, fields):
+    _Enum = namedtuple(name, fields)
+
+    class Enum(_Enum):
+        NAMES = tuple(fields)
+        VALUES = tuple(range(0, len(fields)))
+
+        @classmethod
+        def parse(cls, name: str) -> int:
+            return cls.NAMES.index(name)
+
+        @classmethod
+        def format(cls, value: int) -> str:
+            return cls.NAMES[value]
+
+    return Enum(*Enum.VALUES)
+
 def define_struct(name, byte_order, fields):
     _Struct = namedtuple(name, tuple(field_name for field_name, _ in fields))
 
@@ -213,7 +193,7 @@ def define_struct(name, byte_order, fields):
                 read = file.readinto(cls.BUFFER)
 
                 if read < len(cls.BUFFER):
-                    raise OSError('not enough data read')
+                    raise OSError(errno.EIO)
 
                 return cls.unpack(cls.BUFFER)
 
@@ -228,6 +208,77 @@ def define_struct(name, byte_order, fields):
 
     return Struct
 
+def error_handler(fn):
+    async def wrapper(request, ws):
+        try:
+            if isinstance(fn, _Function):
+                return fn(request, ws)
+            else:
+                return await fn(request, ws)
+        except ValidationError as e:
+            message = json.dumps(dict(type='error', message=str(e)))
+            await ws.send(message)
+        except NetworkError as e:
+            log_error(e.cause, 'Unexpected network error.')
+            message = json.dumps(dict(type='error', message=str(e)))
+            await ws.send(message)
+
+    return wrapper
+
+def validate_arguments(args, types, exact=True):
+    if len(args) != len(types) if exact else len(args) < len(types):
+        raise ValidationError(f'Expected at least {len(types)} arguments')
+
+    for i, typ in enumerate(types):
+        validate_argument_type(args[i], typ)
+
+def validate_argument_range(arg, min=-math.inf, max=math.inf):
+    if not (min <= arg <= max):
+        if math.isinf(min):
+            range = f'less than or equal to {max}'
+        elif math.isinf(max):
+            range = f'greater than or equal to {min}'
+        else:
+            range = f'between {min} and {max}'
+
+        raise ValidationError(f'Expected argument to be {range}')
+
+def validate_argument_type(arg, typ):
+    if not isinstance(arg, typ):
+        typ = typ.__name__ if isinstance(typ, type) else tuple(t.__name__ for t in typ)
+        raise ValidationError(f'Expected argument to be of type {typ}')
+
+def validate_argument_enum(arg, enum):
+    if arg not in enum.NAMES:
+        raise ValidationError(f'Expected argument to be one of {enum.NAMES}')
+
+def validate_arguments_single_byte(args):
+    validate_arguments(args, (int,))
+    validate_argument_range(args[0], 0, 255)
+
+class ValidationError(Exception):
+    pass
+
+class NetworkError(Exception):
+    class _CaptureContext:
+        def __init__(self, message):
+            self.message = message
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc_value, traceback):
+            if isinstance(exc_value, OSError):
+                raise NetworkError(self.message, exc_value)
+
+    @classmethod
+    def capture(cls, message):
+        return cls._CaptureContext(message)
+
+    def __init__(self, message, cause):
+        super().__init__(message)
+        self.cause = cause
+
 class TimerCallback:
     def __init__(self):
         self.callbacks = []
@@ -238,7 +289,6 @@ class TimerCallback:
             self.task = asyncio.create_task(self.execute())
 
     async def execute(self):
-        function_type = type(lambda: 0)
         now = time.time()
 
         for entry in list(self.callbacks):
@@ -247,7 +297,7 @@ class TimerCallback:
             if now >= timestamp:
                 self.callbacks.remove(entry)
 
-                if isinstance(fn, function_type):
+                if isinstance(fn, _Function):
                     fn()
                 else:
                     await fn()
@@ -286,9 +336,13 @@ class FixedSchedule:
     def closest_active_interval(self, timestamp):
         return closest_active_interval(timestamp, self.start_at, self.end_at, self.active_interval)
 
+DisplayEnum = define_enum('DisplayEnum', ('none', 'rainbow', 'pacman', 'byte', 'firework'))
+ScheduleEnum = define_enum('ScheduleEnum', ('none', 'manual', 'automatic'))
+AlignmentEnum = define_enum('AlignmentEnum', ('start', 'center', 'end'))
+
 ScheduleInterval = namedtuple('ScheduleInterval', ('start_at', 'end_at', 'timestamp', 'active'))
 
-DisplayTuple = namedtuple('DisplayTuple', ('none', 'rainbow', 'pacman', 'byte', 'firework'))
+DisplayTuple = namedtuple('DisplayTuple', DisplayEnum.NAMES)
 
 WirelessNetwork = namedtuple('WirelessNetwork', ('interface', 'ssid', 'key'))
 
@@ -329,7 +383,7 @@ class Settings:
                 _DEFAULT_BRIGHTNESS,
                 _DEFAULT_LATITUDE,
                 _DEFAULT_LONGITUDE,
-                _SCHEDULE_AUTOMATIC,
+                ScheduleEnum.automatic,
                 0,
                 0,
                 0,
@@ -428,7 +482,7 @@ class ByteDisplay:
     _COLOR_LOW_BIT = (30, 35, 250)
     _COLOR_HIGH_BIT = (255, 0, 0)
 
-    def __init__(self, pixels, settings, buffer=b'', alignment=_ALIGNMENT_CENTER):
+    def __init__(self, pixels, settings, buffer=b'', alignment=AlignmentEnum.center):
         self.pixels = pixels
         self.settings = settings
         self.buffer = buffer
@@ -453,9 +507,9 @@ class ByteDisplay:
                 buffer_pixel_length = len(buffer) * 9
                 start_offset = 0
 
-                if alignment == _ALIGNMENT_END:
+                if alignment == AlignmentEnum.end:
                     start_offset = pixel_length - buffer_pixel_length
-                elif alignment == _ALIGNMENT_CENTER:
+                elif alignment == AlignmentEnum.center:
                     start_offset = (pixel_length - buffer_pixel_length) // 2
 
                 if start_offset < 0:
@@ -659,10 +713,15 @@ class Controller:
             available_networks = wlan.scan()
             wireless_network = next_network
 
-            if not wlan.isconnected() and current_network.interface == network.WLAN.IF_AP:
-                # Stay reachable, fall back to the configured access point
+            if not wlan.isconnected():
                 wlan.active(False)
-                wlan = self.create_wireless_network_access_point(current_network.ssid, current_network.key)
+
+                # Stay reachable, fall back to the configured access point
+                if current_network.interface == network.WLAN.IF_STA:
+                    wlan = await self.connect_wireless_network_station(current_network.ssid, current_network.key)
+                else:
+                    wlan = self.create_wireless_network_access_point(current_network.ssid, current_network.key)
+
                 wireless_network = current_network
 
         return (wlan, wireless_network, available_networks)
@@ -710,11 +769,9 @@ class Controller:
             log_message(f'Processing schedule. Closest active interval [{start}, {end}].')
 
             if active:
-                if not self.task:
+                if not self.task and display_name:
                     display = parse_display(self.displays, display_name)
-
-                    if display:
-                        self.task = asyncio.create_task(display_run(display))
+                    self.task = asyncio.create_task(display_run(display))
 
                 timer_callback.schedule(end, update_schedule)
             else:
@@ -755,7 +812,7 @@ class Controller:
                     latitude=self.settings.latitude,
                     longitude=self.settings.longitude),
                 schedule=dict(
-                    name=format_schedule(self.settings.schedule),
+                    name=ScheduleEnum.format(self.settings.schedule),
                     start_at=self.settings.schedule_start_at,
                     end_at=self.settings.schedule_end_at,
                     active_interval=self.settings.schedule_active_interval),
@@ -828,6 +885,7 @@ class Controller:
 
         @app.route('/api/ws')
         @with_websocket
+        @error_handler
         async def ws(request, ws):
             nonlocal wlan, wireless_network, available_networks, display_name, schedule
 
@@ -839,122 +897,161 @@ class Controller:
 
                 while True:
                     message = await ws.receive()
-                    message = json.loads(message)
 
-                    if isinstance(message, (list, tuple)) and len(message) >= 1:
-                        action, *args = message
-                        log_message(
-                            format_client_address(request.client_addr),
-                            f'Received WebSocket client message {action}{tuple(args)}')
+                    try:
+                        message = json.loads(message)
+                    except ValueError:
+                        raise ValidationError('Invalid JSON syntax')
 
-                        if action == 'run_display':
-                            name, = args
-                            display = parse_display(self.displays, name)
+                    validate_argument_type(message, (list, tuple))
+                    validate_arguments(message, (str,), exact=False)
+                    action, *args = message
 
-                            if display:
-                                await display_stop()
-                                self.task = asyncio.create_task(display_run(display))
-                                display_name = name
-                        elif action == 'brightness':
-                            value, = args
-                            self.settings.brightness = value
-                            self.settings.write()
-                        elif action == 'location':
-                            latitude, longitude = args
+                    log_message(
+                        format_client_address(request.client_addr),
+                        f'Received WebSocket client message {action}{tuple(args)}')
 
-                            if self.settings.schedule == _SCHEDULE_AUTOMATIC:
-                                schedule = SuntimeSchedule(latitude, longitude)
-                                timer_callback.unschedule(update_schedule)
-                                await update_schedule()
+                    if action == 'run_display':
+                        validate_arguments(args, (str,))
+                        name, = args
+                        validate_argument_enum(name, DisplayEnum)
 
-                            self.settings.latitude = latitude
-                            self.settings.longitude = longitude
-                            self.settings.write()
-                        elif action == 'datetime':
-                            value, = args
-                            timestamp = parse_time(value)
-                            rtc_datetime(timestamp)
-                        elif action == 'schedule':
-                            value, *rest = args
-                            value = parse_schedule(value)
+                        display = parse_display(self.displays, name)
 
-                            if value == _SCHEDULE_MANUAL:
-                                schedule_start_at, schedule_end_at, schedule_active_interval = rest
+                        await display_stop()
+                        self.task = asyncio.create_task(display_run(display))
+                        display_name = name
+                    elif action == 'brightness':
+                        validate_arguments_single_byte(args)
+                        value, = args
 
-                                if 0 <= schedule_start_at < _DAY_SECONDS and 0 <= schedule_end_at < _DAY_SECONDS:
-                                    self.settings.schedule_start_at = schedule_start_at
-                                    self.settings.schedule_end_at = schedule_end_at
-                                    self.settings.schedule_active_interval = schedule_active_interval
-                                else:
-                                    continue
-                            elif value != _SCHEDULE_AUTOMATIC and value != _SCHEDULE_NONE:
-                                continue
+                        self.settings.brightness = value
+                        self.settings.write()
+                    elif action == 'location':
+                        validate_arguments(args, (_Number, _Number))
+                        latitude, longitude = args
+                        validate_argument_range(latitude, -90, 90)
+                        validate_argument_range(longitude, -180, 180)
 
-                            self.settings.schedule = value
-                            schedule = create_schedule_from_settings(self.settings)
+                        if self.settings.schedule == ScheduleEnum.automatic:
+                            schedule = SuntimeSchedule(latitude, longitude)
                             timer_callback.unschedule(update_schedule)
+                            await update_schedule()
 
-                            if value != _SCHEDULE_NONE:
-                                await update_schedule()
+                        self.settings.latitude = latitude
+                        self.settings.longitude = longitude
+                        self.settings.write()
+                    elif action == 'datetime':
+                        validate_arguments(args, (_Number,))
+                        value, = args
+                        validate_argument_range(value, min=0)
 
-                            self.settings.write()
-                        elif action == 'create_wireless_network_access_point':
-                            ssid, key = args
+                        timestamp = parse_time(value)
+                        rtc_datetime(timestamp)
+                    elif action == 'schedule':
+                        validate_arguments(args, (str,), exact=False)
+                        value, *rest = args
+                        validate_argument_enum(value, ScheduleEnum)
+
+                        value = ScheduleEnum.parse(value)
+
+                        if value == ScheduleEnum.manual:
+                            validate_arguments(rest, (_Number, _Number, bool))
+                            schedule_start_at, schedule_end_at, schedule_active_interval = rest
+                            validate_argument_range(schedule_start_at, 0, schedule_end_at)
+                            validate_argument_range(schedule_end_at, schedule_start_at, _DAY_SECONDS)
+
+                            self.settings.schedule_start_at = schedule_start_at
+                            self.settings.schedule_end_at = schedule_end_at
+                            self.settings.schedule_active_interval = schedule_active_interval
+
+                        self.settings.schedule = value
+                        schedule = create_schedule_from_settings(self.settings)
+                        timer_callback.unschedule(update_schedule)
+
+                        if value != ScheduleEnum.none:
+                            await update_schedule()
+
+                        self.settings.write()
+                    elif action == 'create_wireless_network_access_point':
+                        validate_arguments(args, (str, str))
+
+                        ssid, key = args
+
+                        with NetworkError.capture('Failed to setup wireless network'):
                             wlan, wireless_network, available_networks = await self.setup_wireless_network(
                                 WirelessNetwork(network.WLAN.IF_AP, ssid, key),
                                 WirelessNetwork(self.settings.interface, self.settings.ssid, self.settings.key),
                                 wlan)
 
-                            ip, *_ = wlan.ifconfig()
-                            display_ip(ip)
+                        ip, *_ = wlan.ifconfig()
+                        display_ip(ip)
 
-                            self.settings.interface = wireless_network.interface
-                            self.settings.ssid = wireless_network.ssid
-                            self.settings.key = wireless_network.key
-                            self.settings.write()
-                            timer_callback.unschedule(synchronize_time)
-                        elif action == 'connect_wireless_network_station':
-                            ssid, key = args
+                        self.settings.interface = wireless_network.interface
+                        self.settings.ssid = wireless_network.ssid
+                        self.settings.key = wireless_network.key
+                        self.settings.write()
+                        timer_callback.unschedule(synchronize_time)
+                    elif action == 'connect_wireless_network_station':
+                        validate_arguments(args, (str, str))
+
+                        ssid, key = args
+
+                        with NetworkError.capture('Failed to setup wireless network'):
                             wlan, wireless_network, available_networks = await self.setup_wireless_network(
                                 WirelessNetwork(network.WLAN.IF_STA, ssid, key),
                                 WirelessNetwork(self.settings.interface, self.settings.ssid, self.settings.key),
                                 wlan)
 
-                            ip, *_ = wlan.ifconfig()
-                            display_ip(ip)
+                        ip, *_ = wlan.ifconfig()
+                        display_ip(ip)
 
-                            if wireless_network.interface == network.WLAN.IF_STA and wlan.isconnected():
-                                self.settings.interface = wireless_network.interface
-                                self.settings.ssid = wireless_network.ssid
-                                self.settings.key = wireless_network.key
-                                self.settings.write()
+                        if wireless_network.interface == network.WLAN.IF_STA and wlan.isconnected():
+                            self.settings.interface = wireless_network.interface
+                            self.settings.ssid = wireless_network.ssid
+                            self.settings.key = wireless_network.key
+                            self.settings.write()
 
-                                timer_callback.unschedule(synchronize_time)
-                                await synchronize_time()
-                        elif action == 'displays.rainbow.repetitions':
-                            value, = args
-                            self.displays.rainbow.repetitions = value
-                        elif action == 'displays.rainbow.saturation':
-                            value, = args
-                            self.displays.rainbow.saturation = value
-                        elif action == 'displays.rainbow.brightness':
-                            value, = args
-                            self.displays.rainbow.brightness = value
-                        elif action == 'displays.rainbow.wait_ms':
-                            value, = args
-                            self.displays.rainbow.wait_ms = value
-                        elif action == 'displays.pacman.change_player_direction':
-                            self.displays.pacman.change_player_direction()
-                        elif action == 'displays.byte.buffer':
-                            value, = args
-                            self.displays.byte.buffer = value
-                        elif action == 'displays.byte.alignment':
-                            value, = args
-                            self.displays.byte.alignment = parse_alignment(value)
-                        elif action == 'displays.firework.ignite':
-                            self.displays.firework.ignite()
+                            timer_callback.unschedule(synchronize_time)
+                            await synchronize_time()
+                    elif action == 'displays.rainbow.repetitions':
+                        validate_arguments_single_byte(args)
+                        value, = args
+                        self.displays.rainbow.repetitions = value
+                    elif action == 'displays.rainbow.saturation':
+                        validate_arguments_single_byte(args)
+                        value, = args
+                        self.displays.rainbow.saturation = value
+                    elif action == 'displays.rainbow.brightness':
+                        validate_arguments_single_byte(args)
+                        value, = args
+                        self.displays.rainbow.brightness = value
+                    elif action == 'displays.rainbow.wait_ms':
+                        validate_arguments(args, (int,))
+                        value, = args
+                        validate_argument_range(value, min=0)
+                        self.displays.rainbow.wait_ms = value
+                    elif action == 'displays.pacman.change_player_direction':
+                        self.displays.pacman.change_player_direction()
+                    elif action == 'displays.byte.buffer':
+                        validate_arguments(args, ((list, tuple),))
+                        value, = args
+                        for b in value:
+                            validate_argument_type(b, int)
+                            validate_argument_range(b, 0, 255)
 
-                        await broadcast()
+                        self.displays.byte.buffer = value
+                    elif action == 'displays.byte.alignment':
+                        validate_arguments(args, (str,))
+                        value, = args
+                        validate_argument_enum(value, AlignmentEnum)
+                        self.displays.byte.alignment = AlignmentEnum.parse(value)
+                    elif action == 'displays.firework.ignite':
+                        self.displays.firework.ignite()
+                    else:
+                        raise ValidationError(f'Unknown command {action}')
+
+                    await broadcast()
             finally:
                 clients.discard(ws)
                 log_message(format_client_address(request.client_addr), 'WebSocket client disconnect.')

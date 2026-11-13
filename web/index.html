@@ -676,6 +676,10 @@
         return Math.max(0, Math.min(100, value))
       }
 
+      function findDisplay (name) {
+        return state.available_displays.find(function (d) { return d.name === name })
+      }
+
       function render () {
         var dot = byId('status-dot')
         dot.className = 'dot dot-' + status
@@ -691,7 +695,7 @@
           row.classList.toggle('active', active)
         }
 
-        var rainbow = state.available_displays[0]
+        var rainbow = findDisplay('rainbow')
         setSliderValue('rainbow-repetitions', rainbow.repetitions)
         setSliderValue('rainbow-saturation', rainbow.saturation)
         setSliderValue('rainbow-brightness', rainbow.brightness)
@@ -701,14 +705,14 @@
         byId('rainbow-activate-btn').textContent = rainbowActive ? 'Running' : 'Start'
         byId('rainbow-activate-btn').disabled = rainbowActive
 
-        var pacman = state.available_displays[1]
+        var pacman = findDisplay('pacman')
         var pacmanRunning = state.display === 'pacman' && !pacman.ended
         byId('pacman-start-btn').hidden = pacmanRunning
         byId('pacman-direction-btn').hidden = !pacmanRunning
         byId('pacman-gameover').hidden = !pacman.ended
         byId('pacman-start-btn').textContent = pacman.ended ? 'Play again' : 'Start'
 
-        var byteDisplay = state.available_displays[2]
+        var byteDisplay = findDisplay('byte')
         var byteActive = state.display === 'byte'
         byId('byte-activate-btn').textContent = byteActive ? 'Running' : 'Start'
         byId('byte-activate-btn').disabled = byteActive
