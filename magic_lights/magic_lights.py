@@ -216,14 +216,17 @@ def error_handler(fn):
             else:
                 return await fn(request, ws)
         except ValidationError as e:
-            message = json.dumps(dict(type='error', message=str(e)))
+            message = json_response('error', dict(message=str(e))) # json.dumps(dict(type='error', message=str(e)))
             await ws.send(message)
         except NetworkError as e:
             log_error(e.cause, 'Unexpected network error.')
-            message = json.dumps(dict(type='error', message=str(e)))
+            message = json_response('error', dict(message=str(e))) # json.dumps(dict(type='error', message=str(e)))
             await ws.send(message)
 
     return wrapper
+
+def json_response(typ, data):
+    return json.dumps(dict(type=typ, data=data))
 
 def validate_arguments(args, types, exact=True):
     if len(args) != len(types) if exact else len(args) < len(types):
@@ -340,7 +343,15 @@ DisplayEnum = define_enum('DisplayEnum', ('none', 'rainbow', 'pacman', 'byte', '
 ScheduleEnum = define_enum('ScheduleEnum', ('none', 'manual', 'automatic'))
 AlignmentEnum = define_enum('AlignmentEnum', ('start', 'center', 'end'))
 
-ScheduleInterval = namedtuple('ScheduleInterval', ('start_at', 'end_at', 'timestamp', 'active'))
+_ScheduleInterval = namedtuple('ScheduleInterval', ('start_at', 'end_at', 'timestamp', 'active'))
+
+class ScheduleInterval(_ScheduleInterval):
+    def serialize(self):
+        return dict(
+            start_at=unix_time(self.start_at),
+            end_at=unix_time(self.end_at),
+            datetime=unix_time(self.timestamp),
+            active=bool(self.active))
 
 DisplayTuple = namedtuple('DisplayTuple', DisplayEnum.NAMES)
 
@@ -431,6 +442,23 @@ class Settings:
 
         struct.write(name)
 
+    def serialize_brightness(self):
+        return dict(brightness=self.brightness)
+
+    def serialize_location(self):
+        return dict(
+            location=dict(
+                latitude=self.latitude,
+                longitude=self.longitude))
+
+    def serialize_schedule(self):
+        return dict(
+            schedule=dict(
+                name=ScheduleEnum.format(self.schedule),
+                start_at=self.schedule_start_at,
+                end_at=self.schedule_end_at,
+                active_interval=self.schedule_active_interval))
+
 class NoneDisplay:
     _COLOR_BLACK = (0, 0, 0)
 
@@ -445,6 +473,9 @@ class NoneDisplay:
             self.pixels[i] = self._COLOR_BLACK
 
         self.pixels.write()
+
+    def serialize(self):
+        return dict(name=DisplayEnum.format(DisplayEnum.none))
 
 class FireworkDisplay:
     def __init__(self, pixels, settings):
@@ -475,6 +506,9 @@ class FireworkDisplay:
             delta_ms = time.ticks_diff(now_ms, past_ms)
             await asyncio.sleep_ms(max(16 - delta_ms, 1))
             past_ms = time.ticks_ms()
+
+    def serialize(self):
+        return dict(name=DisplayEnum.format(DisplayEnum.firework))
 
 class ByteDisplay:
     _COLOR_BLACK = (0, 0, 0)
@@ -539,6 +573,12 @@ class ByteDisplay:
 
             await asyncio.sleep_ms(16)
 
+    def serialize(self):
+        return dict(
+            name=DisplayEnum.format(DisplayEnum.byte),
+            buffer=list(self.buffer),
+            alignment=AlignmentEnum.format(self.alignment))
+
 # https://learn.adafruit.com/black-lives-matter-badge/arduino-neopixel-rainbow
 class RainbowDisplay:
     def __init__(self, pixels, settings, repetitions=1, saturation=255, brightness=255, wait_ms=10):
@@ -565,6 +605,14 @@ class RainbowDisplay:
 
                 self.pixels.write()
                 await asyncio.sleep_ms(self.wait_ms)
+
+    def serialize(self):
+        return dict(
+            name=DisplayEnum.format(DisplayEnum.rainbow),
+            repetitions=self.repetitions,
+            saturation=self.saturation,
+            brightness=self.brightness,
+            wait_ms=self.wait_ms)
 
 class PacmanDisplay:
     _COLOR_BLACK = (0, 0, 0)
@@ -638,6 +686,11 @@ class PacmanDisplay:
 
             self.pixels.write()
             await asyncio.sleep_ms(16)
+
+    def serialize(self):
+        return dict(
+            name=DisplayEnum.format(DisplayEnum.pacman),
+            ended=self.ended)
 
 class Controller:
     def __init__(self, pixels, timer, displays, settings):
@@ -780,47 +833,13 @@ class Controller:
 
                 timer_callback.schedule(start, update_schedule)
 
-            await broadcast()
+            await broadcast(serialize_schedule())
             return active
 
-        def serialize_state():
+        def serialize_networks():
             ip, *_ = wlan.ifconfig()
 
             return dict(
-                display=display_name,
-                brightness=self.settings.brightness,
-                available_displays=[
-                    dict(
-                        name='none'),
-                    dict(
-                        name='rainbow',
-                        repetitions=self.displays.rainbow.repetitions,
-                        saturation=self.displays.rainbow.saturation,
-                        brightness=self.displays.rainbow.brightness,
-                        wait_ms=self.displays.rainbow.wait_ms),
-                    dict(
-                        name='pacman',
-                        ended=self.displays.pacman.ended),
-                    dict(
-                        name='byte',
-                        buffer=list(self.displays.byte.buffer),
-                        alignment=self.displays.byte.alignment),
-                    dict(
-                        name='firework')],
-                datetime=unix_time(),
-                location=dict(
-                    latitude=self.settings.latitude,
-                    longitude=self.settings.longitude),
-                schedule=dict(
-                    name=ScheduleEnum.format(self.settings.schedule),
-                    start_at=self.settings.schedule_start_at,
-                    end_at=self.settings.schedule_end_at,
-                    active_interval=self.settings.schedule_active_interval),
-                current_schedule_interval=dict(
-                    start_at=unix_time(current_schedule_interval.start_at),
-                    end_at=unix_time(current_schedule_interval.end_at),
-                    datetime=unix_time(current_schedule_interval.timestamp),
-                    active=current_schedule_interval.active) if (current_schedule_interval and schedule) else None,
                 wireless_network=dict(
                     interface=format_interface(wireless_network.interface),
                     ssid=wireless_network.ssid,
@@ -833,8 +852,24 @@ class Controller:
                     security=format_security(security),
                     hidden=bool(hidden)) for ssid, bssid, channel, rssi, security, hidden in available_networks))
 
-        async def broadcast():
-            message = json.dumps(serialize_state())
+        def serialize_schedule():
+            return (self.settings.serialize_schedule()
+                    | (dict(current_schedule_interval=current_schedule_interval.serialize())
+                        if current_schedule_interval and schedule else {}))
+
+        def serialize_state():
+            return (dict(
+                    display=display_name,
+                    available_displays=[display.serialize() for display in self.displays],
+                    datetime=unix_time())
+                | self.settings.serialize_brightness()
+                | self.settings.serialize_location()
+                | serialize_schedule()
+                | serialize_networks())
+
+        async def broadcast(data):
+            data['datetime'] = unix_time()
+            message = json_response('event', data)
 
             for ws in tuple(clients):
                 try:
@@ -843,13 +878,23 @@ class Controller:
                     log_error(e, format_client_address(ws.request.client_addr), 'WebSocket send error.')
                     clients.discard(ws)
 
+        def display_serialize(display):
+            for index, x in enumerate(self.displays):
+                if x is display:
+                    break
+
+            return {
+                'display': display_name,
+                f'available_displays[{index}]': display.serialize()
+            }
+
         async def display_run(display):
             log_message(f'Running display {display_name}.')
 
             display.reset()
             await display.run()
             self.task = None
-            await broadcast()
+            await broadcast(display_serialize(display))
 
         async def display_stop():
             log_message('Stopping display.')
@@ -893,7 +938,7 @@ class Controller:
             log_message(format_client_address(request.client_addr), 'WebSocket client connected.')
 
             try:
-                await ws.send(json.dumps(serialize_state()))
+                await ws.send(json_response('state', serialize_state()))
 
                 while True:
                     message = await ws.receive()
@@ -921,12 +966,16 @@ class Controller:
                         await display_stop()
                         self.task = asyncio.create_task(display_run(display))
                         display_name = name
+
+                        await broadcast(display_serialize(display))
                     elif action == 'brightness':
                         validate_arguments_single_byte(args)
                         value, = args
 
                         self.settings.brightness = value
                         self.settings.write()
+
+                        await broadcast(self.settings.serialize_brightness())
                     elif action == 'location':
                         validate_arguments(args, (_Number, _Number))
                         latitude, longitude = args
@@ -941,6 +990,8 @@ class Controller:
                         self.settings.latitude = latitude
                         self.settings.longitude = longitude
                         self.settings.write()
+
+                        await broadcast(self.settings.serialize_location())
                     elif action == 'datetime':
                         validate_arguments(args, (_Number,))
                         value, = args
@@ -948,6 +999,8 @@ class Controller:
 
                         timestamp = parse_time(value)
                         rtc_datetime(timestamp)
+
+                        await broadcast(dict(datetime=unix_time()))
                     elif action == 'schedule':
                         validate_arguments(args, (str,), exact=False)
                         value, *rest = args
@@ -973,6 +1026,8 @@ class Controller:
                             await update_schedule()
 
                         self.settings.write()
+
+                        await broadcast(serialize_schedule())
                     elif action == 'create_wireless_network_access_point':
                         validate_arguments(args, (str, str))
 
@@ -992,6 +1047,8 @@ class Controller:
                         self.settings.key = wireless_network.key
                         self.settings.write()
                         timer_callback.unschedule(synchronize_time)
+
+                        await broadcast(serialize_networks())
                     elif action == 'connect_wireless_network_station':
                         validate_arguments(args, (str, str))
 
@@ -1014,23 +1071,33 @@ class Controller:
 
                             timer_callback.unschedule(synchronize_time)
                             await synchronize_time()
+
+                        await broadcast(serialize_networks())
                     elif action == 'displays.rainbow.repetitions':
                         validate_arguments_single_byte(args)
                         value, = args
                         self.displays.rainbow.repetitions = value
+
+                        await broadcast(display_serialize(self.displays.rainbow))
                     elif action == 'displays.rainbow.saturation':
                         validate_arguments_single_byte(args)
                         value, = args
                         self.displays.rainbow.saturation = value
+
+                        await broadcast(display_serialize(self.displays.rainbow))
                     elif action == 'displays.rainbow.brightness':
                         validate_arguments_single_byte(args)
                         value, = args
                         self.displays.rainbow.brightness = value
+
+                        await broadcast(display_serialize(self.displays.rainbow))
                     elif action == 'displays.rainbow.wait_ms':
                         validate_arguments(args, (int,))
                         value, = args
                         validate_argument_range(value, min=0)
                         self.displays.rainbow.wait_ms = value
+
+                        await broadcast(display_serialize(self.displays.rainbow))
                     elif action == 'displays.pacman.change_player_direction':
                         self.displays.pacman.change_player_direction()
                     elif action == 'displays.byte.buffer':
@@ -1041,17 +1108,19 @@ class Controller:
                             validate_argument_range(b, 0, 255)
 
                         self.displays.byte.buffer = value
+
+                        await broadcast(display_serialize(self.displays.byte))
                     elif action == 'displays.byte.alignment':
                         validate_arguments(args, (str,))
                         value, = args
                         validate_argument_enum(value, AlignmentEnum)
                         self.displays.byte.alignment = AlignmentEnum.parse(value)
+
+                        await broadcast(display_serialize(self.displays.byte))
                     elif action == 'displays.firework.ignite':
                         self.displays.firework.ignite()
                     else:
-                        raise ValidationError(f'Unknown command {action}')
-
-                    await broadcast()
+                        raise ValidationError(f'Unknown action {action}')
             finally:
                 clients.discard(ws)
                 log_message(format_client_address(request.client_addr), 'WebSocket client disconnect.')
