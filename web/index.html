@@ -274,6 +274,90 @@
 
     .dialog-actions button { margin-bottom: 0; }
 
+    .toasts {
+      position: fixed;
+      bottom: 16px;
+      left: 16px;
+      right: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      z-index: 1000;
+      pointer-events: none;
+    }
+
+    @media (min-width: 480px) {
+      .toasts { left: auto; width: 360px; }
+    }
+
+    .toast {
+      pointer-events: auto;
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      background: #fff;
+      border-radius: 8px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15), 0 2px 4px rgba(0, 0, 0, 0.1);
+      padding: 12px 12px 12px 14px;
+      border-left: 4px solid #fa5252;
+      animation: toast-in 150ms ease-out;
+    }
+
+    .toast-leaving { animation: toast-out 150ms ease-in forwards; }
+
+    .toast-icon {
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      background: #fa5252;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 13px;
+      font-weight: 700;
+      flex-shrink: 0;
+      margin-top: 1px;
+    }
+
+    .toast-body { flex: 1; min-width: 0; }
+
+    .toast-title {
+      font-weight: 600;
+      font-size: 0.9rem;
+      margin-bottom: 2px;
+      color: #c92a2a;
+    }
+
+    .toast-message {
+      font-size: 0.85rem;
+      color: #333;
+      word-break: break-word;
+    }
+
+    .toast-close {
+      border: none;
+      background: transparent;
+      width: auto;
+      padding: 2px;
+      margin: 0;
+      color: #999;
+      font-size: 1rem;
+      line-height: 1;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+
+    @keyframes toast-in {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    @keyframes toast-out {
+      from { opacity: 1; transform: translateY(0); }
+      to { opacity: 0; transform: translateY(8px); }
+    }
+
     /* Declared last so these overrides win the cascade over the
        equal-specificity light-mode rules above. */
     @media (prefers-color-scheme: dark) {
@@ -286,6 +370,9 @@
       .day-timeline { background: #373a40; }
       .day-timeline-divider { background: #868e96; }
       .day-timeline-label { color: #aaa; }
+      .toast { background: #2e3035; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4); }
+      .toast-message { color: #eee; }
+      .toast-close { color: #aaa; }
     }
   </style>
 </head>
@@ -505,6 +592,19 @@
     </div>
   </dialog>
 
+  <div class="toasts" id="toasts"></div>
+
+  <template id="toast-template">
+    <div class="toast">
+      <div class="toast-icon">!</div>
+      <div class="toast-body">
+        <div class="toast-title"></div>
+        <div class="toast-message"></div>
+      </div>
+      <button class="toast-close" aria-label="Dismiss">&#x2715;</button>
+    </div>
+  </template>
+
   <script>
     (function () {
       'use strict'
@@ -512,6 +612,7 @@
       var RECONNECT_MIN_MS = 500
       var RECONNECT_MAX_MS = 8000
       var THROTTLE_MS = 100
+      var TOAST_DURATION_MS = 5000
       var ROUTES = ['home', 'rainbow', 'pacman', 'byte', 'firework', 'settings']
       var ROUTE_TITLES = {
         home: 'Magic Lights',
@@ -532,6 +633,47 @@
         return document.getElementById(id)
       }
 
+      function mergeState (data) {
+        if (!state) state = {}
+
+        Object.keys(data).forEach(function (key) {
+          var match = /^(.+)\[(\d+)\]$/.exec(key)
+
+          if (match) {
+            var name = match[1]
+            var index = Number(match[2])
+
+            if (!Array.isArray(state[name])) state[name] = []
+
+            state[name][index] = data[key]
+          } else {
+            state[key] = data[key]
+          }
+        })
+      }
+
+      function showToast (message, title) {
+        var container = byId('toasts')
+        var fragment = byId('toast-template').content.cloneNode(true)
+        var toast = fragment.querySelector('.toast')
+
+        toast.querySelector('.toast-title').textContent = title || 'Error'
+        toast.querySelector('.toast-message').textContent = message
+
+        var dismissTimer = setTimeout(dismiss, TOAST_DURATION_MS)
+
+        function dismiss () {
+          clearTimeout(dismissTimer)
+          toast.className = 'toast toast-leaving'
+          setTimeout(function () {
+            if (toast.parentNode) toast.parentNode.removeChild(toast)
+          }, 150)
+        }
+
+        toast.querySelector('.toast-close').addEventListener('click', dismiss)
+        container.appendChild(toast)
+      }
+
       // -- WebSocket ----------------------------------------------------
 
       function connect () {
@@ -547,20 +689,29 @@
         }
 
         socket.onmessage = function (event) {
-          var data
+          var message
 
           try {
-            data = JSON.parse(event.data)
+            message = JSON.parse(event.data)
           } catch (error) {
             return
           }
 
-          if (data && typeof data === 'object' && !Array.isArray(data)) {
-            state = data
-            render()
-          }
+          console.log('WebSocket.onmessage', message)
 
-          console.log('WebSocket.onmessage', data)
+          if (!message || typeof message !== 'object') return
+
+          if (message.type === 'state') {
+            state = message.data
+            render()
+          } else if (message.type === 'event') {
+            mergeState(message.data)
+            render()
+          } else if (message.type === 'error') {
+            var errorMessage = (message.data && message.data.message) || 'Something went wrong'
+            console.error('WebSocket server error', errorMessage)
+            showToast(errorMessage)
+          }
         }
 
         socket.onclose = function () {
@@ -974,7 +1125,7 @@
         // here so an invalid combination is never sent over the wire.
         if (startSeconds > endSeconds) return
 
-        send('schedule', mode, startSeconds, endSeconds, Number(byId('schedule-active-interval').value))
+        send('schedule', mode, startSeconds, endSeconds, byId('schedule-active-interval').value === '1')
       })
 
       var confirmDialog = byId('confirm-dialog')
