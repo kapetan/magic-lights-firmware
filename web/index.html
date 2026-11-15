@@ -109,15 +109,15 @@
       width: 48px;
       height: 48px;
       border-radius: 999px;
-      border: 2px solid #2e7d4f;
+      border: 2px solid #228be6;
       background: #fff;
-      color: #2e7d4f;
+      color: #228be6;
       font-size: 1.1rem;
       flex-shrink: 0;
       margin-bottom: 0;
     }
 
-    .row.active .play-btn { background: #1f5c39; border-color: #1f5c39; color: #fff; }
+    .row.active .play-btn { background: #1c7ed6; border-color: #1c7ed6; color: #fff; }
 
     button {
       font: inherit;
@@ -131,9 +131,9 @@
     }
 
     button.primary {
-      background: #2e7d4f;
+      background: #228be6;
       color: #fff;
-      border-color: #2e7d4f;
+      border-color: #228be6;
     }
 
     #pacman-direction-btn, #firework-ignite-btn {
@@ -159,7 +159,8 @@
     label {
       display: block;
       margin-bottom: 16px;
-      font-size: 0.9rem;
+      font-size: 0.875rem;
+      font-weight: 500;
     }
 
     .label-row {
@@ -172,7 +173,7 @@
 
     .day-timeline-wrap {
       position: relative;
-      margin: 20px 0 16px;
+      margin: 0 0 16px;
     }
 
     .day-timeline {
@@ -232,19 +233,40 @@
       background: #ced4da;
     }
 
+    .settings-form {
+      border-top: 1px solid #e0e0e0;
+    }
+
     input[type="text"], input[type="password"], input[type="number"], input[type="time"], input[type="datetime-local"], select {
       width: 100%;
       padding: 10px;
       border-radius: 6px;
       border: 1px solid #ccc;
       font: inherit;
+      font-weight: normal;
       margin-top: 4px;
+      -webkit-appearance: none;
+      appearance: none;
+    }
+
+    input[type="time"], input[type="datetime-local"] {
+      height: 39px;
     }
 
     fieldset {
-      border: 1px solid #e0e0e0;
+      border: none;
       border-radius: 10px;
-      margin-bottom: 16px;
+      margin: 0 0 16px;
+      padding: 0;
+    }
+
+    legend {
+      font-weight: normal;
+      font-size: 0.875rem;
+      padding: 0 5px;
+      margin-left: -5px;
+      padding-top: 16px;
+      padding-bottom: 16px;
     }
 
     #pacman-gameover {
@@ -256,6 +278,11 @@
     }
 
     #wifi-status { color: #777; font-size: 0.9rem; }
+
+    #datetime-form p {
+      margin-top: 0;
+      line-height: 1.55;
+    }
 
     dialog {
       border-radius: 10px;
@@ -365,7 +392,7 @@
       .row, .card { background: #24262a; border-color: #34363a; }
       input, select, dialog { background: #24262a; color: #eee; border-color: #45484d; }
       button, a.settings-link { background: #34363a; color: #eee; border-color: #45484d; }
-      button.primary { background: #2e7d4f; border-color: #2e7d4f; }
+      button.primary { background: #1971c2; border-color: #1971c2; }
       #pacman-gameover { background: #3a331a; border-color: #6b5c26; }
       .day-timeline { background: #373a40; }
       .day-timeline-divider { background: #868e96; }
@@ -496,7 +523,7 @@
 
       <p id="wifi-status"></p>
 
-      <form id="connect-form">
+      <form id="connect-form" class="settings-form">
         <fieldset>
           <legend>Connect to network</legend>
           <label>
@@ -509,7 +536,7 @@
         </fieldset>
       </form>
 
-      <form id="ap-form">
+      <form id="ap-form" class="settings-form">
         <fieldset>
           <legend>Create access point</legend>
           <label>Network name<input type="text" id="ap-ssid" required></label>
@@ -518,7 +545,7 @@
         </fieldset>
       </form>
 
-      <form id="datetime-form">
+      <form id="datetime-form" class="settings-form">
         <fieldset>
           <legend>Date &amp; time</legend>
           <p>Current server time: <output id="datetime-server-time">&mdash;</output></p>
@@ -531,7 +558,7 @@
         </fieldset>
       </form>
 
-      <form id="location-form">
+      <form id="location-form" class="settings-form">
         <fieldset>
           <legend>Location</legend>
           <label>
@@ -547,7 +574,7 @@
         </fieldset>
       </form>
 
-      <form id="schedule-form">
+      <form id="schedule-form" class="settings-form">
         <fieldset>
           <legend>Schedule</legend>
           <div id="schedule-day-timeline-wrap" class="day-timeline-wrap">
