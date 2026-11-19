@@ -26,7 +26,7 @@ from .color_utils import (
     native_brightness_gamma8_component)
 from .atomic_file import AtomicFile
 
-_PIN_PIXELS = const(15)
+_PIN_PIXELS = const(16)
 _PIN_LED = const('LED')
 
 _DAY_SECONDS = const(24 * 60 * 60)

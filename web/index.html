@@ -189,6 +189,7 @@
       top: 0;
       bottom: 0;
       background: #228be6;
+      border-radius: 2px;
     }
 
     .day-timeline-now {
@@ -525,23 +526,23 @@
 
       <form id="connect-form" class="settings-form">
         <fieldset>
-          <legend>Connect to network</legend>
+          <legend>Network</legend>
           <label>
             Network name
             <input type="text" id="connect-ssid" list="connect-ssid-networks" autocomplete="off" required>
             <datalist id="connect-ssid-networks"></datalist>
           </label>
           <label>Password<input type="password" id="connect-password"></label>
-          <button type="submit" class="primary">Connect</button>
+          <button type="submit" class="primary">Connect to network</button>
         </fieldset>
       </form>
 
       <form id="ap-form" class="settings-form">
         <fieldset>
-          <legend>Create access point</legend>
+          <legend>Access point</legend>
           <label>Network name<input type="text" id="ap-ssid" required></label>
           <label>Password (at least 8 characters)<input type="password" id="ap-password" minlength="8" required></label>
-          <button type="submit" class="primary">Create</button>
+          <button type="submit" class="primary">Create access point</button>
         </fieldset>
       </form>
 
@@ -554,7 +555,7 @@
             <input type="datetime-local" id="datetime-value" step="1">
           </label>
           <button type="button" id="datetime-use-browser-btn">Use browser time</button>
-          <button type="submit" class="primary">Set device time</button>
+          <button type="submit" class="primary">Save date &amp; time</button>
         </fieldset>
       </form>
 
